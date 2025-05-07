@@ -123,6 +123,9 @@ else
     mount -o bind $MODDIR/certificates /apex/com.android.conscrypt/cacerts
     print_log "mount bind $MODDIR/certificates /apex/com.android.conscrypt/cacerts status:$?"
     mount -o bind $MODDIR/certificates $apex_dir/cacerts
+    for pid in 1 $(pgrep zygote) $(pgrep zygote64); do
+            nsenter --mount=/proc/${pid}/ns/mnt -- mount --bind $MODDIR/certificates /apex/com.android.conscrypt/cacerts
+    done
     print_log "mount bind $MODDIR/certificates $apex_dir/cacerts status:$?"
     print_log "certificates installed"
 fi
