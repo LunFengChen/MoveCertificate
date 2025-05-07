@@ -1,3 +1,6 @@
+- Merge pull request #41 from SafaSafari/iyue
+- fix android 14 system ca
+---
 - fix(webui): 🐛 #34 修复识别证书失败
 - fix(webui): 🐛 #34 Failed to repair recognition certificate
 ---

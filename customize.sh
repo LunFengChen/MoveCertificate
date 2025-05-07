@@ -12,7 +12,7 @@ SKIPUNZIP=0
 print_modname() {
   ui_print " "
   ui_print "*******************************"
-  ui_print " Supports Android7-14 move cert"
+  ui_print " Supports Android7-15 move cert"
   ui_print "*******************************"
   ui_print " "
 }
