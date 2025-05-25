@@ -2,6 +2,6 @@ id=MoveCertificate
 name=MoveCertificate
 version=v1.5.3
 versionCode=19
-author=iyue,SafaSafari
+author=Contributors
 description=Supports magiskv20.4+/kernelsu/APatch Android 7-15 move certificates
 updateJson=https://pfile.ys1231.cn/modules/MoveCertificate/update.json
