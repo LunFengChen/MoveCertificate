@@ -72,6 +72,31 @@ set_selinux_context(){
     fi
 }
 
+compatible(){
+    # compatible adguard or other
+    # Hash 47ec1af8 is for "AdGuard Intermediate CA" intermediate.
+    print_log "Compatible adguard"
+    cert_dir="$MODDIR/certificates"
+    print_log "Running compatibility cleanup for potentially conflicting certificates."
+
+    # Remove by filename pattern (hash: 47ec1af8.*)
+    rm -f "$cert_dir"/47ec1af8.*
+    print_log "Removed files matching '47ec1af8.*'."
+
+    # Remove by content string "Guard Personal Intermediate"
+    for cert_file in "$cert_dir"/*; do
+        # Ensure it is a file before trying to read it
+        if [ -f "$cert_file" ]; then
+            # Use grep -q for a silent, efficient check
+            if grep -q "Guard Personal Intermediate" "$cert_file"; then
+                print_log "Removing file containing 'Guard Personal Intermediate': $(basename "$cert_file")"
+                rm -f "$cert_file"
+            fi
+        fi
+    done
+    print_log "Compatibility cleanup status:$?"
+}
+
 # Android version <= 13 execute
 if [ "$sdk_version_number" -le 33 ]; then
     print_log "start move cert !"
@@ -83,11 +108,12 @@ if [ "$sdk_version_number" -le 33 ]; then
     # Android 13 or lower versions perform
     move_custom_cert
     fix_user_permissions
+    compatible
 
     selinux_context=$(ls -Zd /system/etc/security/cacerts | awk '{print $1}')
     mount -t tmpfs tmpfs /system/etc/security/cacerts
     print_log "mount /system/etc/security/cacerts status:$?"
-
+    
     cp -f $MODDIR/certificates/* /system/etc/security/cacerts
     print_log "Install /system/etc/security/cacerts status:$?"
     fix_system_permissions
@@ -113,6 +139,7 @@ else
     move_custom_cert
     fix_user_permissions
     fix_system_permissions14 $MODDIR/certificates
+    compatible
 
     print_log "find system conscrypt directory"
     apex_dir=$(find /apex -type d -name "com.android.conscrypt@*")
@@ -125,6 +152,7 @@ else
     mount -o bind $MODDIR/certificates $apex_dir/cacerts
     for pid in 1 $(pgrep zygote) $(pgrep zygote64); do
             nsenter --mount=/proc/${pid}/ns/mnt -- mount --bind $MODDIR/certificates /apex/com.android.conscrypt/cacerts
+            nsenter --mount=/proc/${pid}/ns/mnt -- mount --bind $MODDIR/certificates $apex_dir/cacerts
     done
     print_log "mount bind $MODDIR/certificates $apex_dir/cacerts status:$?"
     print_log "certificates installed"
