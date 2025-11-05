@@ -35,6 +35,8 @@ mv cacert.der 02e06844.0
 ## 1. First convert to pem to calculate hash
 openssl x509 -in cacert.der -inform der -outform pem -out cacert.pem
 openssl x509 -inform PEM -subject_hash_old -in cacert.pem
+## 1.1 Or directly calculate der
+openssl x509 -in cacert.der -inform der -subject_hash_old -noout
 ## 2. Rename certificate to hash.0
 mv cacert.der 02e06844.0
 # Or directly extract the certificate from the user directory after phone installation, no need to worry about calculation and format conversion.

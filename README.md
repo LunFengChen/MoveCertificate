@@ -36,6 +36,8 @@ mv cacert.der 02e06844.0
 ## 1. 先转 pem 计算hash
 openssl x509 -in cacert.der -inform der -outform pem -out cacert.pem
 openssl x509 -inform PEM -subject_hash_old -in cacert.pem
+## 1.1 或者直接计算 der
+openssl x509 -in cacert.der -inform der -subject_hash_old -noout
 ## 2. 重命名证书为 hash值.0
 mv cacert.der 02e06844.0
 # 或者直接使用手机安装后,提取用户目录的证书出来,就不需要考虑计算和格式转换问题.

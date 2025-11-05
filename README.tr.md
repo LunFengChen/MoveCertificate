@@ -35,6 +35,8 @@ mv cacert.der 02e06844.0
 ## 1. Önce hash hesaplamak için pem'e dönüştür
 openssl x509 -in cacert.der -inform der -outform pem -out cacert.pem
 openssl x509 -inform PEM -subject_hash_old -in cacert.pem
+## 1.1 Doğrudan der hesaplayın
+openssl x509 -in cacert.der -inform der -subject_hash_old -noout
 ## 2. Sertifikayı hash.0 olarak yeniden adlandır
 mv cacert.der 02e06844.0
 # Veya telefon kurulumundan sonra doğrudan kullanıcı dizininden sertifikayı çıkarabilirsiniz, hesaplama ve format dönüşümü endişesine gerek yok.
