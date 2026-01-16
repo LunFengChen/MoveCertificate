@@ -45,7 +45,10 @@
     </style>
 </head>
 <body>
-    <h1>MoveCertificate</h1>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <h1 style="margin:0">MoveCertificate</h1>
+        <button class="icon-btn" onclick="rebootDevice()" title="重启设备"><span class="material-icons" style="color:#ff9800">restart_alt</span></button>
+    </div>
     <div class="sub" id="ver">v1.0.0 · by x1a0f3n9</div>
 
     <div class="card">
@@ -131,6 +134,13 @@
     function log(m){var el=document.getElementById('debug');el.textContent+=m+'\n';el.scrollTop=el.scrollHeight;}
     function toast(m){var t=document.getElementById('toast');t.textContent=m;t.className='toast show';setTimeout(function(){t.className='toast';},2000);}
     function exec(cmd){return new Promise(function(ok,fail){var cb='_c'+(++cbId)+'_'+Date.now();window[cb]=function(errno,stdout,stderr){delete window[cb];errno===0?ok(stdout||''):fail(new Error(stderr||'err='+errno));};try{ksu.exec(cmd,'{}',cb);}catch(e){delete window[cb];fail(e);}});}
+
+    window.rebootDevice = function() {
+        if (confirm('确定要重启设备吗？')) {
+            toast('正在重启...');
+            exec('reboot').catch(function(e) { log('重启失败: ' + e.message); });
+        }
+    };
 
     // MD5 实现 (用于计算 subject_hash_old)
     function md5(bytes) {
