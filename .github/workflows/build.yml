@@ -63,6 +63,12 @@ jobs:
     
     - name: Process certificates
       id: certs
+      env:
+        CERT1: ${{ github.event.inputs.cert1 }}
+        CERT2: ${{ github.event.inputs.cert2 }}
+        CERT3: ${{ github.event.inputs.cert3 }}
+        CERT4: ${{ github.event.inputs.cert4 }}
+        CERT5: ${{ github.event.inputs.cert5 }}
       run: |
         mkdir -p certificates
         CERT_HASHES=""
@@ -70,50 +76,69 @@ jobs:
         process_cert() {
           local cert_input="$1"
           local idx="$2"
-          [ -z "$cert_input" ] && return
+          
+          echo "Processing cert${idx}, length: ${#cert_input}"
+          [ -z "$cert_input" ] && { echo "cert${idx} is empty, skipping"; return 1; }
           
           TEMP_PEM="/tmp/cert_${idx}.pem"
           
           # 检测是否是 PEM 格式
           if echo "$cert_input" | grep -q "BEGIN CERTIFICATE"; then
-            # PEM 格式：直接保存
+            echo "cert${idx}: detected PEM format"
             echo "$cert_input" > "$TEMP_PEM"
           else
-            # Base64 格式：解码
+            echo "cert${idx}: detected Base64 format"
             cert_b64=$(echo "$cert_input" | tr -d '[:space:]')
-            [ -z "$cert_b64" ] && return
-            echo "$cert_b64" | base64 -d > "$TEMP_PEM" 2>/dev/null || return
+            [ -z "$cert_b64" ] && { echo "cert${idx} base64 is empty"; return 1; }
+            if ! echo "$cert_b64" | base64 -d > "$TEMP_PEM" 2>/dev/null; then
+              echo "cert${idx}: base64 decode failed"
+              return 1
+            fi
           fi
           
           # 验证是否是有效证书
           if ! openssl x509 -noout -in "$TEMP_PEM" 2>/dev/null; then
             echo "Warning: cert${idx} is not a valid certificate"
+            cat "$TEMP_PEM" | head -c 200
             rm -f "$TEMP_PEM"
-            return
+            return 1
           fi
           
           # 计算 subject_hash_old
-          HASH=$(openssl x509 -subject_hash_old -noout -in "$TEMP_PEM" 2>/dev/null) || return
+          HASH=$(openssl x509 -subject_hash_old -noout -in "$TEMP_PEM" 2>/dev/null)
+          if [ -z "$HASH" ]; then
+            echo "cert${idx}: failed to get hash"
+            return 1
+          fi
+          
           mv "$TEMP_PEM" "certificates/${HASH}.0"
           echo "Added: ${HASH}.0"
-          
-          # 收集 hash 用于版本号
-          if [ -n "$CERT_HASHES" ]; then
-            CERT_HASHES="${CERT_HASHES}-${HASH}"
-          else
-            CERT_HASHES="${HASH}"
-          fi
+          echo "$HASH"
+          return 0
         }
         
-        # 处理每个证书输入
-        process_cert "${{ github.event.inputs.cert1 }}" 1
-        process_cert "${{ github.event.inputs.cert2 }}" 2
-        process_cert "${{ github.event.inputs.cert3 }}" 3
-        process_cert "${{ github.event.inputs.cert4 }}" 4
-        process_cert "${{ github.event.inputs.cert5 }}" 5
+        # 处理每个证书输入，收集 hash
+        for i in 1 2 3 4 5; do
+          eval "cert_val=\$CERT$i"
+          if [ -n "$cert_val" ]; then
+            HASH=$(process_cert "$cert_val" "$i")
+            if [ $? -eq 0 ] && [ -n "$HASH" ]; then
+              # 只取最后一行（hash值）
+              HASH=$(echo "$HASH" | tail -1)
+              if [ -n "$CERT_HASHES" ]; then
+                CERT_HASHES="${CERT_HASHES}-${HASH}"
+              else
+                CERT_HASHES="${HASH}"
+              fi
+            fi
+          fi
+        done
+        
+        echo "=== Certificates directory ==="
+        ls -la certificates/ || echo "No certificates"
+        echo "=== CERT_HASHES: $CERT_HASHES ==="
         
         echo "cert_hashes=$CERT_HASHES" >> $GITHUB_OUTPUT
-        echo "Processed certificates: $CERT_HASHES"
     
     - name: Get version
       id: version
