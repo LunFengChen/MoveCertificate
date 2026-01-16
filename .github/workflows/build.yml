@@ -141,11 +141,17 @@ jobs:
         # 验证 zip 结构
         unzip -l MoveCertificate-*.zip | head -20
     
+    - name: Prepare artifact
+      run: |
+        # 解压 zip 到临时目录，避免 artifact 多一层
+        mkdir -p artifact
+        unzip MoveCertificate-*.zip -d artifact/
+    
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: MoveCertificate-${{ steps.version.outputs.version }}
-        path: MoveCertificate-*.zip
+        path: artifact/*
     
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'push' && github.ref == 'refs/heads/master')
