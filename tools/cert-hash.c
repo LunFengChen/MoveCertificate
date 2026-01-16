@@ -246,6 +246,6 @@ int main(int argc, char *argv[]) {
     printf("%08x\n", hash);
     
     if (content) free(content);
-    if (der != (unsigned char *)content) free(der);
+    if (der && der != (unsigned char *)content) free(der);
     return 0;
 }
