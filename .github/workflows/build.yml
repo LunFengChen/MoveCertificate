@@ -69,7 +69,9 @@ jobs:
         CERT3: ${{ github.event.inputs.cert3 }}
         CERT4: ${{ github.event.inputs.cert4 }}
         CERT5: ${{ github.event.inputs.cert5 }}
+      shell: bash
       run: |
+        set -x
         mkdir -p certificates
         CERT_HASHES=""
         
@@ -78,7 +80,10 @@ jobs:
           local idx="$2"
           
           echo "Processing cert${idx}, length: ${#cert_input}"
-          [ -z "$cert_input" ] && { echo "cert${idx} is empty, skipping"; return 1; }
+          if [ -z "$cert_input" ]; then
+            echo "cert${idx} is empty, skipping"
+            return 1
+          fi
           
           TEMP_PEM="/tmp/cert_${idx}.pem"
           
@@ -89,7 +94,10 @@ jobs:
           else
             echo "cert${idx}: detected Base64 format"
             cert_b64=$(echo "$cert_input" | tr -d '[:space:]')
-            [ -z "$cert_b64" ] && { echo "cert${idx} base64 is empty"; return 1; }
+            if [ -z "$cert_b64" ]; then
+              echo "cert${idx} base64 is empty"
+              return 1
+            fi
             if ! echo "$cert_b64" | base64 -d > "$TEMP_PEM" 2>/dev/null; then
               echo "cert${idx}: base64 decode failed"
               return 1
@@ -99,7 +107,7 @@ jobs:
           # 验证是否是有效证书
           if ! openssl x509 -noout -in "$TEMP_PEM" 2>/dev/null; then
             echo "Warning: cert${idx} is not a valid certificate"
-            cat "$TEMP_PEM" | head -c 200
+            head -c 200 "$TEMP_PEM" || true
             rm -f "$TEMP_PEM"
             return 1
           fi
@@ -113,18 +121,18 @@ jobs:
           
           mv "$TEMP_PEM" "certificates/${HASH}.0"
           echo "Added: ${HASH}.0"
-          echo "$HASH"
+          echo "HASH:$HASH"
           return 0
         }
         
-        # 处理每个证书输入，收集 hash
+        # 处理每个证书输入
         for i in 1 2 3 4 5; do
           eval "cert_val=\$CERT$i"
           if [ -n "$cert_val" ]; then
-            HASH=$(process_cert "$cert_val" "$i")
-            if [ $? -eq 0 ] && [ -n "$HASH" ]; then
-              # 只取最后一行（hash值）
-              HASH=$(echo "$HASH" | tail -1)
+            OUTPUT=$(process_cert "$cert_val" "$i" 2>&1) || true
+            echo "$OUTPUT"
+            HASH=$(echo "$OUTPUT" | grep "^HASH:" | cut -d: -f2)
+            if [ -n "$HASH" ]; then
               if [ -n "$CERT_HASHES" ]; then
                 CERT_HASHES="${CERT_HASHES}-${HASH}"
               else
