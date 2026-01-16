@@ -13,6 +13,7 @@
         .card { background: #2a2a2a; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
         .card-title { font-size: 13px; color: #888; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
         .card-title span { display: flex; align-items: center; gap: 6px; }
+        .card-sub-title { font-size: 11px; color: #666; margin-bottom: 6px; padding: 0 4px; display: flex; align-items: center; gap: 6px; }
         .badge { background: #6750A4; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 8px; }
         .icon-btn { background: none; border: none; color: #888; cursor: pointer; padding: 4px; }
         .cert { background: #333; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
@@ -55,11 +56,13 @@
         <div id="list1"><div class="empty">加载中...</div></div>
     </div>
     <div class="card" id="card2">
-        <div class="card-title"><span>待安装 <span class="badge" style="background:#ff9800;color:#000" id="n2">0</span></span>
+        <div class="card-title"><span>待安装 <span class="badge" style="background:#ff9800;color:#000" id="n2all">0</span></span>
             <button class="icon-btn" onclick="clearWait()"><span class="material-icons">delete</span></button>
         </div>
-        <div class="card-path">/data/local/tmp/cert/ (*.0 *.pem *.crt *.cer)</div>
+        <div class="card-sub-title">/data/local/tmp/cert/ <span class="badge" style="background:#666" id="n2">0</span></div>
         <div id="list2"><div class="empty">暂无</div></div>
+        <div class="card-sub-title" style="margin-top:12px">/data/misc/user/0/cacerts-added/ <span class="badge" style="background:#666" id="n2b">0</span></div>
+        <div id="list2b"><div class="empty">暂无</div></div>
     </div>
     <div class="card">
         <div class="card-title"><span>候选区域 <span class="badge" id="n3">0</span></span>
@@ -548,10 +551,16 @@
         });
     }
 
+    function updateWaitingTotal() {
+        var total = certs2.length + certs2b.length;
+        document.getElementById('n2all').textContent = total;
+    }
+
     function render2() {
         var el = document.getElementById('list2');
         document.getElementById('n2').textContent = certs2.length;
-        if (!certs2.length) { el.innerHTML = '<div class="empty">暂无待安装证书</div>'; return; }
+        updateWaitingTotal();
+        if (!certs2.length) { el.innerHTML = '<div class="empty">暂无</div>'; return; }
         el.innerHTML = certs2.map(function(c, idx) {
             var cn = c.cn || KNOWN[c.hash] || c.hash;
             var name = cn + ' => ' + c.hash + '.0';
@@ -760,6 +769,89 @@
         }).catch(function(e) { log('加载失败: ' + e.message); render2(); });
     };
 
+    var certs2b = [];
+    var USER_CERTS_DIR = '/data/misc/user/0/cacerts-added';
+    
+    window.load2b = function() {
+        log('加载用户证书...');
+        exec('ls "' + USER_CERTS_DIR + '" 2>/dev/null || echo ""').then(function(out) {
+            certs2b = [];
+            var lines = out.trim().split('\n').filter(function(l) {
+                return l && l.length > 0 && l.endsWith('.0');
+            });
+            var pending = lines.length;
+            if (pending === 0) { log('用户证书: 0'); render2b(); return; }
+            
+            lines.forEach(function(f) {
+                var path = USER_CERTS_DIR + '/' + f;
+                var hash = f.replace('.0', '');
+                
+                exec('cat "' + path + '"').then(function(pem) {
+                    var cn = null;
+                    if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
+                        var info = parsePEM(pem);
+                        if (info && info.subject && info.subject.CN) {
+                            cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
+                        }
+                    }
+                    certs2b.push({ hash: hash, path: path, cn: cn, pem: pem });
+                    if (--pending === 0) { log('用户证书: ' + certs2b.length); render2b(); }
+                }).catch(function() {
+                    certs2b.push({ hash: hash, path: path, cn: KNOWN[hash] || null });
+                    if (--pending === 0) { log('用户证书: ' + certs2b.length); render2b(); }
+                });
+            });
+        }).catch(function(e) { log('加载用户证书失败: ' + e.message); render2b(); });
+    };
+
+    function render2b() {
+        var el = document.getElementById('list2b');
+        document.getElementById('n2b').textContent = certs2b.length;
+        updateWaitingTotal();
+        if (!certs2b.length) { el.innerHTML = '<div class="empty">暂无</div>'; return; }
+        el.innerHTML = certs2b.map(function(c) {
+            var cn = c.cn || KNOWN[c.hash] || c.hash;
+            var name = cn + ' => ' + c.hash + '.0';
+            return '<div class="cert" data-hash="' + c.hash + '"><div class="dot ok"></div><div class="cert-info"><div class="cert-name">' + name + '</div><div class="cert-meta">用户证书 · 可移动到系统</div></div><span class="cert-btn cert-move material-icons" style="color:#4caf50">arrow_upward</span></div>';
+        }).join('');
+        
+        // 绑定移动按钮事件
+        el.querySelectorAll('.cert-move').forEach(function(btn) {
+            var certDiv = btn.closest('.cert');
+            var hash = certDiv.getAttribute('data-hash');
+            btn.onclick = function(e) {
+                e.stopPropagation();
+                moveUserCertToSystem(hash);
+            };
+        });
+        
+        // 绑定点击查看详情
+        el.querySelectorAll('.cert-info').forEach(function(info) {
+            var certDiv = info.closest('.cert');
+            var hash = certDiv.getAttribute('data-hash');
+            info.onclick = function() {
+                var c = certs2b.find(function(x) { return x.hash === hash; });
+                if (c && c.pem) {
+                    showCertDetail(c.path, c.pem, c.hash, 'user');
+                }
+            };
+        });
+    }
+
+    window.moveUserCertToSystem = function(hash) {
+        // 将用户证书复制到待安装目录
+        var srcPath = USER_CERTS_DIR + '/' + hash + '.0';
+        var dstPath = WAITING + '/' + hash + '.0';
+        exec('mkdir -p "' + WAITING + '" && cp "' + srcPath + '" "' + dstPath + '"').then(function() {
+            toast('已添加到待安装，重启后生效');
+            load2();
+            load2b();
+        }).catch(function(e) {
+            log('移动失败: ' + e.message);
+            toast('移动失败');
+        });
+    };
+
     window.load3 = function() {
         log('扫描候选证书...');
         certs3 = [];
@@ -829,6 +921,7 @@
     detectAndroidVersion();
     load1();
     load2();
+    load2b();
     load3();
     loadLog();
 })();
