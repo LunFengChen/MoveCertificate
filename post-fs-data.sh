@@ -17,8 +17,19 @@ sdk_version_number=$(expr "$sdk_version" + 0)
 LOG_PATH="$MODDIR/install.log"
 LOG_TAG="x1a0f3n9"
 
+# 获取时间戳（post-fs-data 阶段系统时间可能未同步）
+get_timestamp() {
+    local ts=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)
+    # 如果时间是 1970 年，说明系统时间未同步
+    if echo "$ts" | grep -q "^1970"; then
+        echo "boot"
+    else
+        echo "$ts"
+    fi
+}
+
 # Keep only one up-to-date log
-echo "[$LOG_TAG] $(date '+%Y-%m-%d %H:%M:%S') Start" >$LOG_PATH
+echo "[$LOG_TAG] $(get_timestamp) Start" >$LOG_PATH
 
 print_log() {
     echo "[$LOG_TAG] $@" >>$LOG_PATH
@@ -265,4 +276,4 @@ else
     print_log "Total certs in system: $(ls -1 $MODDIR/certificates/*.0 2>/dev/null | wc -l)"
 fi
 
-print_log "$(date '+%Y-%m-%d %H:%M:%S') Done"
+print_log "$(get_timestamp) Done"
