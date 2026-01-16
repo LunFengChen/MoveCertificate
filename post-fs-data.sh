@@ -223,19 +223,24 @@ if [ "$sdk_version_number" -le 33 ]; then
     # 获取原始 SELinux 上下文
     selinux_context=$(ls -Zd /system/etc/security/cacerts | awk '{print $1}')
     
+    # 先备份原有系统证书到临时目录
+    TEMP_CERTS="/dev/tmp_cacerts_$$"
+    mkdir -p "$TEMP_CERTS"
+    cp /system/etc/security/cacerts/* "$TEMP_CERTS/" 2>/dev/null || true
+    print_log "Backup system certs: $(ls -1 $TEMP_CERTS/*.0 2>/dev/null | wc -l) files"
+    
     # 挂载 tmpfs 覆盖系统证书目录
     mount -t tmpfs tmpfs /system/etc/security/cacerts
     print_log "mount tmpfs /system/etc/security/cacerts status:$?"
     
     # 复制原有系统证书
-    print_log "Backup /system/etc/security/cacerts"
-    # 注意：此时 /system/etc/security/cacerts 已被 tmpfs 覆盖，需要从其他地方获取
-    # 实际上 Magisk 会在 post-fs-data 之前保留原始挂载，这里直接用模块目录的备份
-    # 首次运行时模块目录可能为空，需要先从系统复制
+    cp "$TEMP_CERTS"/* /system/etc/security/cacerts/ 2>/dev/null || true
+    rm -rf "$TEMP_CERTS"
+    print_log "Restored system certs"
     
-    # 复制模块证书（包含内置 + 用户安装的）
+    # 复制模块证书（覆盖同名文件）
     cp -f $MODDIR/certificates/*.0 /system/etc/security/cacerts/ 2>/dev/null || true
-    print_log "Install certificates status:$?"
+    print_log "Install module certificates status:$?"
     
     fix_system_permissions
     print_log "certificates installed"
