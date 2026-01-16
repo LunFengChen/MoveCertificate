@@ -8,18 +8,31 @@ on:
     branches: [ master ]
   workflow_dispatch:
     inputs:
-      version:
-        description: '版本号 (如 v1.0.0)'
+      cert1:
+        description: '证书1 Base64 (可选)'
         required: false
-        default: 'v1.0.0'
-      cert_base64:
-        description: '证书 Base64 (可选，多个用 ||| 分隔)'
+        type: string
+      cert2:
+        description: '证书2 Base64 (可选)'
         required: false
+        type: string
+      cert3:
+        description: '证书3 Base64 (可选)'
+        required: false
+        type: string
+      cert4:
+        description: '证书4 Base64 (可选)'
+        required: false
+        type: string
+      cert5:
+        description: '证书5 Base64 (可选)'
+        required: false
+        type: string
 
 # 使用方法：
 # 方式1: 在 certificates/ 目录上传证书文件，然后触发构建
-# 方式2: 手动触发时在 cert_base64 输入框粘贴证书的 base64 编码
-#        多个证书用 ||| 分隔，获取: cat cert.pem | base64 -w0
+# 方式2: 手动触发时在输入框粘贴证书的 base64 编码（支持带换行）
+#        获取 base64: cat cert.pem | base64
 
 jobs:
   build:
@@ -47,42 +60,79 @@ jobs:
         $TOOLCHAIN/bin/armv7a-linux-androideabi21-clang -static -O2 -o bin/cert-hash-arm tools/cert-hash.c
         ls -la bin/
     
+    - name: Process base64 certificates
+      id: certs
+      run: |
+        mkdir -p certificates
+        CERT_HASHES=""
+        
+        process_cert() {
+          local cert_b64="$1"
+          local idx="$2"
+          [ -z "$cert_b64" ] && return
+          
+          # 移除所有空白字符（处理带换行的 base64）
+          cert_b64=$(echo "$cert_b64" | tr -d '[:space:]')
+          [ -z "$cert_b64" ] && return
+          
+          TEMP_PEM="/tmp/cert_${idx}.pem"
+          echo "$cert_b64" | base64 -d > "$TEMP_PEM" 2>/dev/null || return
+          
+          # 验证是否是有效证书
+          if ! openssl x509 -noout -in "$TEMP_PEM" 2>/dev/null; then
+            echo "Warning: cert${idx} is not a valid certificate"
+            rm -f "$TEMP_PEM"
+            return
+          fi
+          
+          # 计算 subject_hash_old
+          HASH=$(openssl x509 -subject_hash_old -noout -in "$TEMP_PEM" 2>/dev/null) || return
+          mv "$TEMP_PEM" "certificates/${HASH}.0"
+          echo "Added: ${HASH}.0"
+          
+          # 收集 hash 用于版本号
+          if [ -n "$CERT_HASHES" ]; then
+            CERT_HASHES="${CERT_HASHES}-${HASH}"
+          else
+            CERT_HASHES="${HASH}"
+          fi
+        }
+        
+        # 处理每个证书输入
+        process_cert '${{ github.event.inputs.cert1 }}' 1
+        process_cert '${{ github.event.inputs.cert2 }}' 2
+        process_cert '${{ github.event.inputs.cert3 }}' 3
+        process_cert '${{ github.event.inputs.cert4 }}' 4
+        process_cert '${{ github.event.inputs.cert5 }}' 5
+        
+        echo "cert_hashes=$CERT_HASHES" >> $GITHUB_OUTPUT
+        echo "Processed certificates: $CERT_HASHES"
+    
     - name: Get version
       id: version
       run: |
-        if [[ "${{ github.event.inputs.version }}" != "" ]]; then
-          VERSION="${{ github.event.inputs.version }}"
-        elif [[ $GITHUB_REF == refs/tags/* ]]; then
+        CERT_HASHES="${{ steps.certs.outputs.cert_hashes }}"
+        
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          # tag 触发：使用 tag 名
           VERSION=${GITHUB_REF#refs/tags/}
+        elif [[ -n "$CERT_HASHES" ]]; then
+          # 手动触发且有证书：使用 hash 拼接
+          VERSION="v1.0.0-${CERT_HASHES}"
         else
+          # 其他情况：使用 commit hash
           VERSION="v1.0.0-$(git rev-parse --short HEAD)"
         fi
+        
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-    
-    - name: Process base64 certificates
-      if: ${{ github.event.inputs.cert_base64 != '' }}
-      run: |
-        mkdir -p certificates
-        echo "Processing base64 certificates..."
-        IFS='|||' read -ra CERTS <<< "${{ github.event.inputs.cert_base64 }}"
-        for i in "${!CERTS[@]}"; do
-          CERT_B64="${CERTS[$i]}"
-          [ -z "$CERT_B64" ] && continue
-          # 解码到临时文件
-          TEMP_PEM="/tmp/cert_${i}.pem"
-          echo "$CERT_B64" | base64 -d > "$TEMP_PEM" 2>/dev/null || continue
-          # 用 openssl 计算 subject_hash_old
-          HASH=$(openssl x509 -subject_hash_old -noout -in "$TEMP_PEM" 2>/dev/null) || continue
-          # 重命名为 hash.0
-          mv "$TEMP_PEM" "certificates/${HASH}.0"
-          echo "Added: ${HASH}.0"
-        done
+        echo "Version: $VERSION"
     
     - name: Build module
       run: |
         chmod +x build.sh
         ls -la
         ls -la bin/ || true
+        ls -la certificates/ || true
         if [ -d "certificates" ] && [ "$(ls -A certificates 2>/dev/null)" ]; then
           ./build.sh -v ${{ steps.version.outputs.version }} -c ./certificates
         else
