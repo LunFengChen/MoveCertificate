@@ -11,23 +11,15 @@ on:
       cert1:
         description: '证书1 (PEM格式或Base64)'
         required: false
-        type: string
+        type: text
       cert2:
         description: '证书2 (PEM格式或Base64)'
         required: false
-        type: string
+        type: text
       cert3:
         description: '证书3 (PEM格式或Base64)'
         required: false
-        type: string
-      cert4:
-        description: '证书4 (PEM格式或Base64)'
-        required: false
-        type: string
-      cert5:
-        description: '证书5 (PEM格式或Base64)'
-        required: false
-        type: string
+        type: text
 
 # 使用方法：
 # 方式1: 在 certificates/ 目录上传证书文件，然后触发构建
@@ -63,12 +55,6 @@ jobs:
     
     - name: Process certificates
       id: certs
-      env:
-        CERT1: ${{ github.event.inputs.cert1 }}
-        CERT2: ${{ github.event.inputs.cert2 }}
-        CERT3: ${{ github.event.inputs.cert3 }}
-        CERT4: ${{ github.event.inputs.cert4 }}
-        CERT5: ${{ github.event.inputs.cert5 }}
       shell: bash
       run: |
         set -x
@@ -87,12 +73,14 @@ jobs:
           
           TEMP_PEM="/tmp/cert_${idx}.pem"
           
-          # 检测是否是 PEM 格式
+          # 检测是否是 PEM 格式 (包含 BEGIN CERTIFICATE)
           if echo "$cert_input" | grep -q "BEGIN CERTIFICATE"; then
             echo "cert${idx}: detected PEM format"
-            echo "$cert_input" > "$TEMP_PEM"
+            # 使用 printf 保留换行
+            printf '%s\n' "$cert_input" > "$TEMP_PEM"
           else
             echo "cert${idx}: detected Base64 format"
+            # 移除所有空白字符后解码
             cert_b64=$(echo "$cert_input" | tr -d '[:space:]')
             if [ -z "$cert_b64" ]; then
               echo "cert${idx} base64 is empty"
@@ -104,10 +92,14 @@ jobs:
             fi
           fi
           
+          echo "=== cert${idx} file content (first 500 bytes) ==="
+          head -c 500 "$TEMP_PEM"
+          echo ""
+          echo "=== end of cert${idx} ==="
+          
           # 验证是否是有效证书
           if ! openssl x509 -noout -in "$TEMP_PEM" 2>/dev/null; then
             echo "Warning: cert${idx} is not a valid certificate"
-            head -c 200 "$TEMP_PEM" || true
             rm -f "$TEMP_PEM"
             return 1
           fi
@@ -125,9 +117,25 @@ jobs:
           return 0
         }
         
-        # 处理每个证书输入
-        for i in 1 2 3 4 5; do
-          eval "cert_val=\$CERT$i"
+        # 将证书写入临时文件（避免环境变量长度限制）
+        cat > /tmp/cert1_input.txt << 'CERT1EOF'
+        ${{ github.event.inputs.cert1 }}
+        CERT1EOF
+        
+        cat > /tmp/cert2_input.txt << 'CERT2EOF'
+        ${{ github.event.inputs.cert2 }}
+        CERT2EOF
+        
+        cat > /tmp/cert3_input.txt << 'CERT3EOF'
+        ${{ github.event.inputs.cert3 }}
+        CERT3EOF
+        
+        # 处理每个证书
+        for i in 1 2 3; do
+          cert_file="/tmp/cert${i}_input.txt"
+          # 读取并清理前后空白
+          cert_val=$(cat "$cert_file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' || true)
+          
           if [ -n "$cert_val" ]; then
             OUTPUT=$(process_cert "$cert_val" "$i" 2>&1) || true
             echo "$OUTPUT"
