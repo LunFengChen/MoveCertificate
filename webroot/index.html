@@ -865,48 +865,60 @@
     window.load3 = function() {
         log('扫描候选证书...');
         certs3 = [];
-        var pending = SCAN_PATHS.length;
         
-        SCAN_PATHS.forEach(function(scanPath) {
-            exec('find "' + scanPath + '" -maxdepth 2 \\( -name "*.0" -o -name "*.pem" -o -name "*.crt" -o -name "*.cer" \\) 2>/dev/null | head -20').then(function(out) {
-                var lines = out.trim().split('\n').filter(function(l) { return l && l.length > 0; });
-                
-                var filePending = lines.length;
-                if (filePending === 0) {
-                    if (--pending === 0) { log('候选: ' + certs3.length); render3(); }
-                    return;
-                }
-                
-                lines.forEach(function(p) {
-                    exec('cat "' + p + '"').then(function(pem) {
-                        if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
-                            var info = parsePEM(pem);
-                            var hash = null, cn = null;
-                            var ext = p.split('.').pop().toLowerCase();
-                            
-                            if (ext === '0') {
-                                hash = p.split('/').pop().replace('.0', '');
-                            } else if (info && info.subjectDER) {
-                                hash = calcSubjectHash(info.subjectDER);
+        // 先获取已安装的证书 hash 列表
+        exec('cat "' + MODDIR + '/installed.list" 2>/dev/null || echo ""').then(function(listContent) {
+            var installedHashes = listContent.trim().split('\n')
+                .filter(function(l) { return l && l.indexOf(':') > 0; })
+                .map(function(l) { return l.split(':')[0]; });
+            
+            var pending = SCAN_PATHS.length;
+            
+            SCAN_PATHS.forEach(function(scanPath) {
+                exec('find "' + scanPath + '" -maxdepth 2 \\( -name "*.0" -o -name "*.pem" -o -name "*.crt" -o -name "*.cer" \\) 2>/dev/null | head -20').then(function(out) {
+                    var lines = out.trim().split('\n').filter(function(l) { return l && l.length > 0; });
+                    
+                    var filePending = lines.length;
+                    if (filePending === 0) {
+                        if (--pending === 0) { log('候选: ' + certs3.length); render3(); }
+                        return;
+                    }
+                    
+                    lines.forEach(function(p) {
+                        exec('cat "' + p + '"').then(function(pem) {
+                            if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
+                                var info = parsePEM(pem);
+                                var hash = null, cn = null;
+                                var ext = p.split('.').pop().toLowerCase();
+                                
+                                if (ext === '0') {
+                                    hash = p.split('/').pop().replace('.0', '');
+                                } else if (info && info.subjectDER) {
+                                    hash = calcSubjectHash(info.subjectDER);
+                                }
+                                if (info && info.subject && info.subject.CN) {
+                                    cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
+                                }
+                                
+                                // 过滤已安装的证书
+                                if (hash && installedHashes.indexOf(hash) === -1
+                                         && !certs2.some(function(c) { return c.hash === hash; })
+                                         && !certs3.some(function(c) { return c.hash === hash; })) {
+                                    certs3.push({ hash: hash, path: p, isPEM: ext !== '0', pem: pem, cn: cn });
+                                }
                             }
-                            if (info && info.subject && info.subject.CN) {
-                                cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
-                            }
-                            
-                            if (hash && !certs1.some(function(c) { return c.hash === hash; }) 
-                                     && !certs2.some(function(c) { return c.hash === hash; })
-                                     && !certs3.some(function(c) { return c.hash === hash; })) {
-                                certs3.push({ hash: hash, path: p, isPEM: ext !== '0', pem: pem, cn: cn });
-                            }
-                        }
-                        if (--filePending === 0 && --pending === 0) { log('候选: ' + certs3.length); render3(); }
-                    }).catch(function() {
-                        if (--filePending === 0 && --pending === 0) { log('候选: ' + certs3.length); render3(); }
+                            if (--filePending === 0 && --pending === 0) { log('候选: ' + certs3.length); render3(); }
+                        }).catch(function() {
+                            if (--filePending === 0 && --pending === 0) { log('候选: ' + certs3.length); render3(); }
+                        });
                     });
+                }).catch(function() {
+                    if (--pending === 0) { log('候选: ' + certs3.length); render3(); }
                 });
-            }).catch(function() {
-                if (--pending === 0) { log('候选: ' + certs3.length); render3(); }
             });
+        }).catch(function() {
+            log('获取已安装列表失败');
+            render3();
         });
     };
 
@@ -926,14 +938,21 @@
         });
     }
 
+    function refreshAll() {
+        load1();
+        load2();
+        load2b();
+        load3();
+        loadLog();
+    }
+
     // 初始化
     log('WebUI 启动');
     detectAndroidVersion();
-    load1();
-    load2();
-    load2b();
-    load3();
-    loadLog();
+    refreshAll();
+    
+    // 每 10 秒自动刷新
+    setInterval(refreshAll, 10000);
 })();
 </script>
 </body>
