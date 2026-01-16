@@ -7,25 +7,10 @@ on:
   pull_request:
     branches: [ master ]
   workflow_dispatch:
-    inputs:
-      cert1:
-        description: '证书1 (PEM格式或Base64)'
-        required: false
-        type: text
-      cert2:
-        description: '证书2 (PEM格式或Base64)'
-        required: false
-        type: text
-      cert3:
-        description: '证书3 (PEM格式或Base64)'
-        required: false
-        type: text
 
 # 使用方法：
-# 方式1: 在 certificates/ 目录上传证书文件，然后触发构建
-# 方式2: 手动触发时在输入框粘贴证书内容，支持两种格式：
-#        - PEM格式: -----BEGIN CERTIFICATE-----...-----END CERTIFICATE-----
-#        - Base64: 证书的 base64 编码 (cat cert.pem | base64)
+# 把证书文件放到 certificates/ 目录，push 触发构建
+# 支持格式: .pem .crt .cer .0
 
 jobs:
   build:
@@ -57,103 +42,39 @@ jobs:
       id: certs
       shell: bash
       run: |
-        set -x
-        mkdir -p certificates
         CERT_HASHES=""
         
-        process_cert() {
-          local cert_input="$1"
-          local idx="$2"
-          
-          echo "Processing cert${idx}, length: ${#cert_input}"
-          if [ -z "$cert_input" ]; then
-            echo "cert${idx} is empty, skipping"
-            return 1
-          fi
-          
-          TEMP_PEM="/tmp/cert_${idx}.pem"
-          
-          # 检测是否是 PEM 格式 (包含 BEGIN CERTIFICATE)
-          if echo "$cert_input" | grep -q "BEGIN CERTIFICATE"; then
-            echo "cert${idx}: detected PEM format"
-            # 使用 printf 保留换行
-            printf '%s\n' "$cert_input" > "$TEMP_PEM"
-          else
-            echo "cert${idx}: detected Base64 format"
-            # 移除所有空白字符后解码
-            cert_b64=$(echo "$cert_input" | tr -d '[:space:]')
-            if [ -z "$cert_b64" ]; then
-              echo "cert${idx} base64 is empty"
-              return 1
+        # 只处理仓库中已有的 certificates/ 目录
+        if [ -d "certificates" ] && [ "$(ls -A certificates 2>/dev/null)" ]; then
+          echo "Found certificates in repo"
+          for cert in certificates/*; do
+            [ -f "$cert" ] || continue
+            filename=$(basename "$cert")
+            ext="${filename##*.}"
+            
+            if [ "$ext" = "0" ]; then
+              # 已经是 .0 格式
+              HASH="${filename%.0}"
+            elif [ "$ext" = "pem" ] || [ "$ext" = "crt" ] || [ "$ext" = "cer" ]; then
+              # 需要转换
+              HASH=$(openssl x509 -subject_hash_old -noout -in "$cert" 2>/dev/null) || continue
+              openssl x509 -in "$cert" -out "certificates/${HASH}.0" 2>/dev/null || continue
+              rm -f "$cert"
+              echo "Converted: $filename -> ${HASH}.0"
+            else
+              continue
             fi
-            if ! echo "$cert_b64" | base64 -d > "$TEMP_PEM" 2>/dev/null; then
-              echo "cert${idx}: base64 decode failed"
-              return 1
+            
+            if [ -n "$CERT_HASHES" ]; then
+              CERT_HASHES="${CERT_HASHES}-${HASH}"
+            else
+              CERT_HASHES="${HASH}"
             fi
-          fi
-          
-          echo "=== cert${idx} file content (first 500 bytes) ==="
-          head -c 500 "$TEMP_PEM"
-          echo ""
-          echo "=== end of cert${idx} ==="
-          
-          # 验证是否是有效证书
-          if ! openssl x509 -noout -in "$TEMP_PEM" 2>/dev/null; then
-            echo "Warning: cert${idx} is not a valid certificate"
-            rm -f "$TEMP_PEM"
-            return 1
-          fi
-          
-          # 计算 subject_hash_old
-          HASH=$(openssl x509 -subject_hash_old -noout -in "$TEMP_PEM" 2>/dev/null)
-          if [ -z "$HASH" ]; then
-            echo "cert${idx}: failed to get hash"
-            return 1
-          fi
-          
-          mv "$TEMP_PEM" "certificates/${HASH}.0"
-          echo "Added: ${HASH}.0"
-          echo "HASH:$HASH"
-          return 0
-        }
+          done
+        fi
         
-        # 将证书写入临时文件（避免环境变量长度限制）
-        cat > /tmp/cert1_input.txt << 'CERT1EOF'
-        ${{ github.event.inputs.cert1 }}
-        CERT1EOF
-        
-        cat > /tmp/cert2_input.txt << 'CERT2EOF'
-        ${{ github.event.inputs.cert2 }}
-        CERT2EOF
-        
-        cat > /tmp/cert3_input.txt << 'CERT3EOF'
-        ${{ github.event.inputs.cert3 }}
-        CERT3EOF
-        
-        # 处理每个证书
-        for i in 1 2 3; do
-          cert_file="/tmp/cert${i}_input.txt"
-          # 读取并清理前后空白
-          cert_val=$(cat "$cert_file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' || true)
-          
-          if [ -n "$cert_val" ]; then
-            OUTPUT=$(process_cert "$cert_val" "$i" 2>&1) || true
-            echo "$OUTPUT"
-            HASH=$(echo "$OUTPUT" | grep "^HASH:" | cut -d: -f2)
-            if [ -n "$HASH" ]; then
-              if [ -n "$CERT_HASHES" ]; then
-                CERT_HASHES="${CERT_HASHES}-${HASH}"
-              else
-                CERT_HASHES="${HASH}"
-              fi
-            fi
-          fi
-        done
-        
-        echo "=== Certificates directory ==="
-        ls -la certificates/ || echo "No certificates"
-        echo "=== CERT_HASHES: $CERT_HASHES ==="
-        
+        echo "=== Certificates ==="
+        ls -la certificates/ 2>/dev/null || echo "No certificates"
         echo "cert_hashes=$CERT_HASHES" >> $GITHUB_OUTPUT
     
     - name: Get version
