@@ -11,7 +11,9 @@ on:
 # 使用方法：
 # 1. 仓库 Settings → Secrets and variables → Actions → New repository secret
 # 2. 添加 CERT_1, CERT_2, ... CERT_5 (可选)
-# 3. 值为证书的 base64: cat cert.pem | base64 -w0
+# 3. 值可以是：
+#    - PEM 格式：直接粘贴 -----BEGIN CERTIFICATE----- ... -----END CERTIFICATE-----
+#    - Base64：cat cert.pem | base64 -w0
 # 4. 手动触发 workflow 或 push 触发构建
 
 jobs:
@@ -55,11 +57,19 @@ jobs:
         
         # 处理 Secrets 中的证书
         for i in 1 2 3 4 5; do
-          eval "cert_b64=\$CERT_$i"
-          [ -z "$cert_b64" ] && continue
+          eval "cert_val=\$CERT_$i"
+          [ -z "$cert_val" ] && continue
           
           TEMP="/tmp/cert_${i}.pem"
-          echo "$cert_b64" | base64 -d > "$TEMP" 2>/dev/null || continue
+          
+          # 检测格式：PEM 或 Base64
+          if echo "$cert_val" | grep -q "BEGIN CERTIFICATE"; then
+            # PEM 格式直接保存
+            echo "$cert_val" > "$TEMP"
+          else
+            # Base64 格式解码
+            echo "$cert_val" | base64 -d > "$TEMP" 2>/dev/null || continue
+          fi
           
           # 验证证书
           if ! openssl x509 -noout -in "$TEMP" 2>/dev/null; then
@@ -77,7 +87,7 @@ jobs:
         
         # 处理仓库中已有的证书
         if [ -d "certificates" ]; then
-          for cert in certificates/*.pem certificates/*.crt certificates/*.cer 2>/dev/null; do
+          for cert in certificates/*.pem certificates/*.crt certificates/*.cer; do
             [ -f "$cert" ] || continue
             HASH=$(openssl x509 -subject_hash_old -noout -in "$cert" 2>/dev/null) || continue
             openssl x509 -in "$cert" -out "certificates/${HASH}.0"
