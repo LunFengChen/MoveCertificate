@@ -51,7 +51,7 @@
         <div class="card-title"><span>已安装 <span class="badge" id="n1">0</span></span>
             <button class="icon-btn" onclick="load1()"><span class="material-icons">refresh</span></button>
         </div>
-        <div class="card-path">/system/etc/security/cacerts/ 或 /apex/.../cacerts/</div>
+        <div class="card-path" id="cert-path">检测中...</div>
         <div id="list1"><div class="empty">加载中...</div></div>
     </div>
     <div class="card" id="card2">
@@ -105,6 +105,26 @@
     ];
     var certs1 = [], certs2 = [], certs3 = [], hashes = {}, cbId = 0;
     var KNOWN = {'9a5ba575':'PortSwigger CA','84040dbc':'Charles Proxy CA','0725b47c':'Fiddler Root CA','7f4536e6':'Reqable CA','e4fb11ae':'Reqable Proxy CA','c8750f0d':'Mitmproxy CA','0f4ed297':'AdGuard CA','364618e0':'ProxyPin CA','87bc3517':'HttpCanary CA','243f0bfb':'Packet Capture CA'};
+    var sdkVersion = 0;
+    var CERT_PATH_OLD = '/system/etc/security/cacerts/';
+    var CERT_PATH_NEW = '/apex/com.android.conscrypt/cacerts/';
+    
+    function detectAndroidVersion() {
+        exec('getprop ro.build.version.sdk').then(function(sdk) {
+            sdkVersion = parseInt(sdk.trim(), 10) || 0;
+            var pathEl = document.getElementById('cert-path');
+            if (sdkVersion > 0) {
+                var path = sdkVersion <= 33 ? CERT_PATH_OLD : CERT_PATH_NEW;
+                pathEl.textContent = path;
+                log('Android SDK: ' + sdkVersion + ', 证书路径: ' + path);
+            } else {
+                pathEl.textContent = CERT_PATH_OLD + ' 或 ' + CERT_PATH_NEW;
+            }
+        }).catch(function(e) {
+            log('获取SDK版本失败: ' + e.message);
+            document.getElementById('cert-path').textContent = CERT_PATH_OLD + ' 或 ' + CERT_PATH_NEW;
+        });
+    }
     function log(m){var el=document.getElementById('debug');el.textContent+=m+'\n';el.scrollTop=el.scrollHeight;}
     function toast(m){var t=document.getElementById('toast');t.textContent=m;t.className='toast show';setTimeout(function(){t.className='toast';},2000);}
     function exec(cmd){return new Promise(function(ok,fail){var cb='_c'+(++cbId)+'_'+Date.now();window[cb]=function(errno,stdout,stderr){delete window[cb];errno===0?ok(stdout||''):fail(new Error(stderr||'err='+errno));};try{ksu.exec(cmd,'{}',cb);}catch(e){delete window[cb];fail(e);}});}
@@ -419,6 +439,33 @@
         });
     };
 
+    window.toggleCert = function(hash, currentEnabled) {
+        // 证书启用/禁用通过 /data/misc/user/0/cacerts-removed/ 目录控制
+        var removedDir = '/data/misc/user/0/cacerts-removed';
+        var removedPath = removedDir + '/' + hash + '.0';
+        var certPath = (sdkVersion <= 33 ? CERT_PATH_OLD : CERT_PATH_NEW) + hash + '.0';
+        
+        if (currentEnabled) {
+            // 禁用：复制证书到 cacerts-removed 目录
+            exec('mkdir -p "' + removedDir + '" && cp "' + certPath + '" "' + removedPath + '"').then(function() {
+                toast('已禁用，需重启应用生效');
+                load1();
+            }).catch(function(e) {
+                log('禁用失败: ' + e.message);
+                toast('禁用失败');
+            });
+        } else {
+            // 启用：从 cacerts-removed 目录删除
+            exec('rm -f "' + removedPath + '"').then(function() {
+                toast('已启用，需重启应用生效');
+                load1();
+            }).catch(function(e) {
+                log('启用失败: ' + e.message);
+                toast('启用失败');
+            });
+        }
+    };
+
     window.removeCert2 = function(hash) {
         exec('rm -f "' + WAITING + '/' + hash + '.0"').then(function() {
             toast('已移除');
@@ -471,10 +518,25 @@
             var cn = c.cn || KNOWN[c.hash] || c.hash;
             var name = cn + ' => ' + c.hash + '.0';
             var isBuiltin = c.source === 'builtin';
-            var sourceText = isBuiltin ? '模块内置，已安装' : '已安装';
+            var sourceText = isBuiltin ? '模块内置' : '用户安装';
+            var statusClass = c.enabled ? 'ok' : 'warn';
+            var statusText = c.enabled ? '已生效' : '已禁用';
+            var toggleIcon = c.enabled ? 'toggle_on' : 'toggle_off';
+            var toggleColor = c.enabled ? '#4caf50' : '#888';
             var delBtn = isBuiltin ? '' : '<span class="cert-btn cert-del material-icons" style="color:#f44336" data-hash="' + c.hash + '">remove_circle</span>';
-            return '<div class="cert" data-hash="' + c.hash + '"><div class="dot ok"></div><div class="cert-info" onclick="clickCert1(\'' + c.hash + '\')"><div class="cert-name">' + name + '</div><div class="cert-meta">' + sourceText + '</div></div>' + delBtn + '</div>';
+            var toggleBtn = '<span class="cert-btn cert-toggle material-icons" style="color:' + toggleColor + ';font-size:28px" data-hash="' + c.hash + '" data-enabled="' + c.enabled + '">' + toggleIcon + '</span>';
+            return '<div class="cert" data-hash="' + c.hash + '"><div class="dot ' + statusClass + '"></div><div class="cert-info" onclick="clickCert1(\'' + c.hash + '\')"><div class="cert-name">' + name + '</div><div class="cert-meta">' + sourceText + ' · ' + statusText + '</div></div>' + toggleBtn + delBtn + '</div>';
         }).join('');
+        
+        // 绑定开关按钮事件
+        el.querySelectorAll('.cert-toggle').forEach(function(btn) {
+            btn.onclick = function(e) {
+                e.stopPropagation();
+                var hash = btn.getAttribute('data-hash');
+                var enabled = btn.getAttribute('data-enabled') === 'true';
+                toggleCert(hash, enabled);
+            };
+        });
         
         // 绑定删除按钮事件
         el.querySelectorAll('.cert-del').forEach(function(btn) {
@@ -585,26 +647,56 @@
                 return;
             }
             
-            lines.forEach(function(line) {
-                var parts = line.split(':');
-                var hash = parts[0];
-                var source = parts[1]; // builtin 或 user
+            // 获取被禁用的证书列表
+            exec('ls /data/misc/user/0/cacerts-removed/ 2>/dev/null || echo ""').then(function(removedList) {
+                var removedHashes = removedList.trim().split('\n').map(function(f) {
+                    return f.replace('.0', '');
+                });
                 
-                // 所有证书都从 certificates/ 读取
-                var path = MODULE_CERTS + '/' + hash + '.0';
-                exec('cat "' + path + '"').then(function(pem) {
-                    var cn = null;
-                    if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
-                        var info = parsePEM(pem);
-                        if (info && info.subject && info.subject.CN) {
-                            cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
+                lines.forEach(function(line) {
+                    var parts = line.split(':');
+                    var hash = parts[0];
+                    var source = parts[1]; // builtin 或 user
+                    var enabled = removedHashes.indexOf(hash) === -1;
+                    
+                    // 所有证书都从 certificates/ 读取
+                    var path = MODULE_CERTS + '/' + hash + '.0';
+                    exec('cat "' + path + '"').then(function(pem) {
+                        var cn = null;
+                        if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
+                            var info = parsePEM(pem);
+                            if (info && info.subject && info.subject.CN) {
+                                cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
+                            }
                         }
-                    }
-                    certs1.push({ hash: hash, path: path, cn: cn, pem: pem, source: source });
-                    if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
-                }).catch(function() {
-                    certs1.push({ hash: hash, source: source, cn: KNOWN[hash] || null });
-                    if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
+                        certs1.push({ hash: hash, path: path, cn: cn, pem: pem, source: source, enabled: enabled });
+                        if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
+                    }).catch(function() {
+                        certs1.push({ hash: hash, source: source, cn: KNOWN[hash] || null, enabled: enabled });
+                        if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
+                    });
+                });
+            }).catch(function() {
+                // 无法读取 removed 目录，假设全部启用
+                lines.forEach(function(line) {
+                    var parts = line.split(':');
+                    var hash = parts[0];
+                    var source = parts[1];
+                    var path = MODULE_CERTS + '/' + hash + '.0';
+                    exec('cat "' + path + '"').then(function(pem) {
+                        var cn = null;
+                        if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
+                            var info = parsePEM(pem);
+                            if (info && info.subject && info.subject.CN) {
+                                cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
+                            }
+                        }
+                        certs1.push({ hash: hash, path: path, cn: cn, pem: pem, source: source, enabled: true });
+                        if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
+                    }).catch(function() {
+                        certs1.push({ hash: hash, source: source, cn: KNOWN[hash] || null, enabled: true });
+                        if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
+                    });
                 });
             });
         }).catch(function(e) { log('加载失败: ' + e.message); render1(); });
@@ -734,6 +826,7 @@
 
     // 初始化
     log('WebUI 启动');
+    detectAndroidVersion();
     load1();
     load2();
     load3();
