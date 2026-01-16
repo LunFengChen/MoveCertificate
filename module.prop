@@ -3,4 +3,4 @@ name=MoveCertificate
 version=v1.0.0
 versionCode=1
 author=x1a0f3n9
-description=Supports magiskv20.4+/kernelsu/APatch Android 7-15 move certificates(fork from ys1231)
+description=Supports magiskv20.4+/kernelsu/APatch Android 7-16 move certificates(fork from ys1231)

@@ -34,7 +34,7 @@ name=MoveCertificate
 version=$VERSION
 versionCode=$(echo $VERSION | tr -d 'v.')
 author=$AUTHOR
-description=Move certificates to system store. Magisk/KernelSU/APatch. Android 7-15.
+description=Move certificates to system store. Magisk/KernelSU/APatch. Android 7-16.
 EOF
 
 # 更新 WebUI 版本

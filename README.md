@@ -2,6 +2,8 @@
 
 [English](#english) | 中文
 
+支持 Android 7 - 16，兼容 Magisk / KernelSU / APatch
+
 基于 [ys1231/MoveCertificate](https://github.com/ys1231/MoveCertificate) 二次开发，更方便个人/群控使用的版本。告别各种繁琐步骤：
 - 不再需要 手机设置的证书安装程序
 - 批量安装时不再需要证书计算hash
@@ -50,6 +52,8 @@ adb push cert.pem /sdcard/Download/
 
 <a name="english"></a>
 # MoveCertificate (English)
+
+Supports Android 7 - 16, compatible with Magisk / KernelSU / APatch
 
 Enhanced [ys1231/MoveCertificate](https://github.com/ys1231/MoveCertificate) for easier personal/batch deployment.
 
