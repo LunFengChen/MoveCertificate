@@ -2,10 +2,10 @@ name: Build Module
 
 on:
   push:
-    branches: [ main, master, iyue ]
+    branches: [ master ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main, master, iyue ]
+    branches: [ master ]
   workflow_dispatch:
     inputs:
       version:
@@ -90,7 +90,7 @@ jobs:
         path: MoveCertificate-*.zip
     
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/iyue'))
+      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'push' && github.ref == 'refs/heads/master')
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ startsWith(github.ref, 'refs/tags/') && steps.version.outputs.version || 'latest' }}
