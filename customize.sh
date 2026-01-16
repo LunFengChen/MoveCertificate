@@ -21,19 +21,29 @@ print_modname() {
 
 on_install() {
   D_CERTIFICATE="$MODPATH/certificates"
-  D_TMP_CERT=/data/local/tmp/cert
-  D_USER_CERT=/data/misc/user/0/cacerts-added
+  INSTALLED_LIST="$MODPATH/installed.list"
 
-  mkdir -p -m 777 "$D_TMP_CERT"
   mkdir -p -m 755 "$D_CERTIFICATE"
-  mkdir -p -m 755 "$D_USER_CERT"
 
-  # 如果模块打包了证书，复制到待安装目录
-  if [ -d "$MODPATH/certificates" ] && [ "$(ls -A $MODPATH/certificates 2>/dev/null)" ]; then
+  # 初始化 installed.list，记录模块内置证书
+  > "$INSTALLED_LIST"
+  if [ -d "$D_CERTIFICATE" ] && [ "$(ls -A $D_CERTIFICATE 2>/dev/null)" ]; then
     ui_print "- Found bundled certificates"
-    cp -f "$MODPATH/certificates"/* "$D_TMP_CERT/" 2>/dev/null
-    ui_print "- Certificates will be installed on next boot"
+    for cert in "$D_CERTIFICATE"/*.0; do
+      [ -f "$cert" ] || continue
+      hash=$(basename "$cert" .0)
+      echo "${hash}:builtin" >> "$INSTALLED_LIST"
+      ui_print "  - $hash (builtin)"
+    done
   fi
+  
+  # 如果有待安装的 pem/crt/cer 文件，也记录（会在 post-fs-data 时转换）
+  for cert in "$D_CERTIFICATE"/*.pem "$D_CERTIFICATE"/*.crt "$D_CERTIFICATE"/*.cer; do
+    [ -f "$cert" ] || continue
+    ui_print "  - $(basename "$cert") (will convert on boot)"
+  done
+  
+  ui_print "- Certificates will be installed on next boot"
 }
 
 # You can add more functions to assist your custom script code

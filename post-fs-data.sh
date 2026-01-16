@@ -18,7 +18,7 @@ LOG_PATH="$MODDIR/install.log"
 LOG_TAG="x1a0f3n9"
 
 # Keep only one up-to-date log
-echo "[$LOG_TAG] Keep only one up-to-date log" >$LOG_PATH
+echo "[$LOG_TAG] $(date '+%Y-%m-%d %H:%M:%S') Start" >$LOG_PATH
 
 print_log() {
     echo "[$LOG_TAG] $@" >>$LOG_PATH
@@ -34,73 +34,113 @@ get_cert_hash_bin() {
     esac
 }
 
-# 转换证书为 hash.0 格式
-convert_cert() {
+# 转换证书为 hash.0 格式并复制到目标目录，返回 hash
+convert_and_copy_cert() {
     local src="$1"
     local dest_dir="$2"
     local filename=$(basename "$src")
     local ext="${filename##*.}"
+    local hash=""
     
-    # 如果已经是 .0 格式，直接复制
+    local cert_hash_bin=$(get_cert_hash_bin)
+    
+    # 如果已经是 .0 格式
     if [ "$ext" = "0" ]; then
+        hash="${filename%.0}"
         cp -f "$src" "$dest_dir/"
-        print_log "Copy: $filename"
+        print_log "Copy: $filename -> $dest_dir/"
+        echo "$hash"
         return 0
     fi
     
     # 检查是否是证书文件
     case "$ext" in
         pem|crt|cer|PEM|CRT|CER) ;;
-        *) return 1 ;;
+        *) 
+            print_log "Skip: $filename (unsupported format)"
+            return 1 
+        ;;
     esac
     
     # 使用 cert-hash 计算 hash
-    local cert_hash_bin=$(get_cert_hash_bin)
     if [ -x "$cert_hash_bin" ]; then
-        local hash=$("$cert_hash_bin" "$src" 2>/dev/null)
+        hash=$("$cert_hash_bin" "$src" 2>/dev/null)
         if [ -n "$hash" ] && [ ${#hash} -eq 8 ]; then
             cp -f "$src" "$dest_dir/${hash}.0"
             print_log "Convert: $filename -> ${hash}.0"
+            echo "$hash"
             return 0
+        else
+            print_log "Failed: $filename (cert-hash returned invalid hash)"
         fi
+    else
+        print_log "Failed: $filename (cert-hash not executable)"
     fi
     
-    # 如果 cert-hash 失败，直接复制原文件
-    cp -f "$src" "$dest_dir/"
-    print_log "Copy (no convert): $filename"
-    return 0
+    return 1
 }
 
-move_custom_cert() {
-    local src_dir="/data/local/tmp/cert"
-    if [ ! -d "$src_dir" ] || [ -z "$(ls -A "$src_dir" 2>/dev/null)" ]; then
-        print_log "The directory '$src_dir' is empty."
-        return
-    fi
+# 安装待安装区的证书（包括 /data/local/tmp/cert 和用户证书目录）
+install_pending_certs() {
+    local installed_list="$MODDIR/installed.list"
+    local total_installed=0
+    local total_failed=0
     
     # 设置 cert-hash 可执行权限
     local cert_hash_bin=$(get_cert_hash_bin)
-    [ -f "$cert_hash_bin" ] && chmod +x "$cert_hash_bin"
+    if [ -f "$cert_hash_bin" ]; then
+        chmod +x "$cert_hash_bin"
+        print_log "cert-hash: $cert_hash_bin"
+    else
+        print_log "Warning: cert-hash not found at $cert_hash_bin"
+    fi
     
-    for cert in "$src_dir"/*; do
-        [ -f "$cert" ] || continue
-        convert_cert "$cert" "$MODDIR/certificates"
-        convert_cert "$cert" "/data/misc/user/0/cacerts-added"
-    done
-    print_log "Install $src_dir status:$?"
+    # 处理单个目录的证书
+    install_from_dir() {
+        local src_dir="$1"
+        [ -d "$src_dir" ] || return
+        
+        local file_count=$(ls -1 "$src_dir" 2>/dev/null | wc -l)
+        if [ "$file_count" -eq 0 ]; then
+            print_log "Skip: $src_dir (empty)"
+            return
+        fi
+        
+        print_log "Processing: $src_dir ($file_count files)"
+        
+        for cert in "$src_dir"/*; do
+            [ -f "$cert" ] || continue
+            
+            # 转换并复制证书
+            local hash=$(convert_and_copy_cert "$cert" "$MODDIR/certificates")
+            
+            if [ -n "$hash" ] && [ ${#hash} -eq 8 ]; then
+                # 记录到 installed.list
+                if ! grep -q "^${hash}:" "$installed_list" 2>/dev/null; then
+                    echo "${hash}:user" >> "$installed_list"
+                    print_log "Recorded: ${hash}:user"
+                    total_installed=$((total_installed + 1))
+                else
+                    print_log "Skip: ${hash} (already in list)"
+                fi
+            else
+                total_failed=$((total_failed + 1))
+            fi
+        done
+        
+        # 清空目录
+        rm -rf "$src_dir"/*
+        print_log "Cleared: $src_dir"
+    }
     
-    # 清空待安装目录
-    rm -rf "$src_dir"/*
-    print_log "Cleared $src_dir"
-}
-
-fix_user_permissions() {
-    # "Fix permissions of the system certificate directory"
-    chown -R root:root /data/misc/user/0/cacerts-added/
-    chmod -R 666 /data/misc/user/0/cacerts-added/
-    chown system:system /data/misc/user/0/cacerts-added
-    chmod 755 /data/misc/user/0/cacerts-added
-    print_log "fix user certificate permissions status:$?"
+    # 处理两个待安装目录
+    install_from_dir "/data/local/tmp/cert"
+    install_from_dir "/data/misc/user/0/cacerts-added"
+    
+    # 删除空的待安装目录
+    rmdir "/data/local/tmp/cert" 2>/dev/null || true
+    
+    print_log "Pending certs: installed=$total_installed, failed=$total_failed"
 }
 
 fix_system_permissions() {
@@ -164,16 +204,12 @@ if [ "$sdk_version_number" -le 33 ]; then
     
     # 确保目录存在
     mkdir -p $MODDIR/certificates
-    mkdir -p /data/misc/user/0/cacerts-added
     
     print_log "Backup /system/etc/security/cacerts"
     cp /system/etc/security/cacerts/* $MODDIR/certificates/ 2>/dev/null || true
-    print_log "Backup /data/misc/user/0/cacerts-added"
-    cp /data/misc/user/0/cacerts-added/* $MODDIR/certificates/ 2>/dev/null || true
     
-    # Android 13 or lower versions perform
-    move_custom_cert
-    fix_user_permissions
+    # 安装待安装区的证书
+    install_pending_certs
     compatible
 
     selinux_context=$(ls -Zd /system/etc/security/cacerts | awk '{print $1}')
@@ -200,17 +236,14 @@ else
     
     # 确保目录存在
     mkdir -p $MODDIR/certificates
-    mkdir -p /data/misc/user/0/cacerts-added
     
     mount -t tmpfs tmpfs $MODDIR/certificates
     print_log "mount $MODDIR/certificates status:$?"
     print_log "Backup /apex/com.android.conscrypt/cacerts"
     cp /apex/com.android.conscrypt/cacerts/* $MODDIR/certificates/ 2>/dev/null || true
-    print_log "Backup /data/misc/user/0/cacerts-added"
-    cp /data/misc/user/0/cacerts-added/* $MODDIR/certificates/ 2>/dev/null || true
     
-    move_custom_cert
-    fix_user_permissions
+    # 安装待安装区的证书
+    install_pending_certs
     fix_system_permissions14 $MODDIR/certificates
     compatible
 
@@ -229,4 +262,7 @@ else
     done
     print_log "mount bind $MODDIR/certificates $apex_dir/cacerts status:$?"
     print_log "certificates installed"
+    print_log "Total certs in system: $(ls -1 $MODDIR/certificates/*.0 2>/dev/null | wc -l)"
 fi
+
+print_log "$(date '+%Y-%m-%d %H:%M:%S') Done"
