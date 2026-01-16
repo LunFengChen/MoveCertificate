@@ -12,13 +12,14 @@
 
 ## 使用方法
 
-**方法1：模块内置证书（适合群控/刷机党）**
-- 方案A: Fork 仓库 → 把证书放 `certificates/` 目录 → push 触发构建
-- 方案B: Actions → Run workflow → 粘贴证书 base64 → 下载模块
-  - 获取 base64: `cat cert.pem | base64 -w0`
-  - 多个证书用 `|||` 分隔
+**方法1：CI 内置证书（适合群控/刷机党，无需本地环境）**
 
-**方法2：模块自动安装（Magisk/KernelSU/APatch 通用）**
+1. Fork 本仓库
+2. 把证书文件（.pem/.crt/.cer）放到 `certificates/` 目录
+3. Push 触发 GitHub Actions 自动构建
+4. 从 Actions 或 Releases 下载带证书的模块
+
+**方法2：adb 推送安装（Magisk/KernelSU/APatch 通用）**
 
 推送各种类型的证书到指定目录
 
@@ -28,7 +29,7 @@ adb push cert.pem /data/local/tmp/cert/
 adb reboot
 ```
 
-**方法3：模块的WebUI 安装（KernelSU/APatch）**
+**方法3：WebUI 安装（KernelSU/APatch）**
 
 推送各种类型的证书到候选目录
 
@@ -66,18 +67,19 @@ Enhanced [ys1231/MoveCertificate](https://github.com/ys1231/MoveCertificate) for
 
 ## Usage
 
-**Method 1: adb push (Magisk/KernelSU/APatch)**
+**Method 1: CI bundled certs (for batch deployment, no local env needed)**
+
+1. Fork this repo
+2. Put cert files (.pem/.crt/.cer) in `certificates/` directory
+3. Push to trigger GitHub Actions build
+4. Download module with bundled certs from Actions or Releases
+
+**Method 2: adb push (Magisk/KernelSU/APatch)**
 ```bash
 # Any format supported, auto-convert on reboot
 adb push cert.pem /data/local/tmp/cert/
 adb reboot
 ```
-
-**Method 2: Bundled certs (for batch deployment)**
-- Option A: Fork repo → put certs in `certificates/` → push to trigger build
-- Option B: Actions → Run workflow → paste cert base64 → download module
-  - Get base64: `cat cert.pem | base64 -w0`
-  - Multiple certs: separate with `|||`
 
 **Method 3: WebUI (KernelSU/APatch)**
 ```bash
