@@ -106,11 +106,11 @@ jobs:
         }
         
         # 处理每个证书输入
-        process_cert '${{ github.event.inputs.cert1 }}' 1
-        process_cert '${{ github.event.inputs.cert2 }}' 2
-        process_cert '${{ github.event.inputs.cert3 }}' 3
-        process_cert '${{ github.event.inputs.cert4 }}' 4
-        process_cert '${{ github.event.inputs.cert5 }}' 5
+        process_cert "${{ github.event.inputs.cert1 }}" 1
+        process_cert "${{ github.event.inputs.cert2 }}" 2
+        process_cert "${{ github.event.inputs.cert3 }}" 3
+        process_cert "${{ github.event.inputs.cert4 }}" 4
+        process_cert "${{ github.event.inputs.cert5 }}" 5
         
         echo "cert_hashes=$CERT_HASHES" >> $GITHUB_OUTPUT
         echo "Processed certificates: $CERT_HASHES"

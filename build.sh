@@ -81,7 +81,7 @@ fi
 
 # 打包
 rm -f MoveCertificate-*.zip
-OUTPUT="MoveCertificate-${AUTHOR}.zip"
+OUTPUT="MoveCertificate-${VERSION}.zip"
 
 # 基础文件列表
 FILES="META-INF webroot module.prop post-fs-data.sh service.sh system.prop customize.sh"
