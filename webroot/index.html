@@ -435,8 +435,9 @@
         document.getElementById('n1').textContent = certs1.length;
         if (!certs1.length) { el.innerHTML = '<div class="empty">暂无已安装证书</div>'; return; }
         el.innerHTML = certs1.map(function(c) {
-            var name = KNOWN[c.hash] || c.hash;
-            return '<div class="cert" onclick="clickCert1(\'' + c.hash + '\')"><div class="dot ok"></div><div class="cert-info"><div class="cert-name">' + name + '</div><div class="cert-meta">' + c.hash + '.0</div></div><span class="cert-btn material-icons">chevron_right</span></div>';
+            var cn = c.cn || KNOWN[c.hash] || c.hash;
+            var name = cn + ' => ' + c.hash + '.0';
+            return '<div class="cert" onclick="clickCert1(\'' + c.hash + '\')"><div class="dot ok"></div><div class="cert-info"><div class="cert-name">' + name + '</div><div class="cert-meta">已安装</div></div><span class="cert-btn material-icons">chevron_right</span></div>';
         }).join('');
     }
 
@@ -523,9 +524,27 @@
         exec('ls "' + INSTALLED + '" 2>/dev/null || echo ""').then(function(out) {
             certs1 = [];
             var lines = out.trim().split('\n').filter(function(l) { return l && l.endsWith('.0'); });
-            lines.forEach(function(f) { certs1.push({ hash: f.replace('.0', ''), path: INSTALLED + '/' + f }); });
-            log('已安装: ' + certs1.length);
-            render1();
+            var pending = lines.length;
+            if (pending === 0) { log('已安装: 0'); render1(); return; }
+            
+            lines.forEach(function(f) {
+                var hash = f.replace('.0', '');
+                var path = INSTALLED + '/' + f;
+                exec('cat "' + path + '"').then(function(pem) {
+                    var cn = null;
+                    if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
+                        var info = parsePEM(pem);
+                        if (info && info.subject && info.subject.CN) {
+                            cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
+                        }
+                    }
+                    certs1.push({ hash: hash, path: path, cn: cn, pem: pem });
+                    if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
+                }).catch(function() {
+                    certs1.push({ hash: hash, path: path });
+                    if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
+                });
+            });
         }).catch(function(e) { log('加载失败: ' + e.message); render1(); });
     };
 

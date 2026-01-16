@@ -88,6 +88,10 @@ move_custom_cert() {
         convert_cert "$cert" "/data/misc/user/0/cacerts-added"
     done
     print_log "Install $src_dir status:$?"
+    
+    # 清空待安装目录
+    rm -rf "$src_dir"/*
+    print_log "Cleared $src_dir"
 }
 
 fix_user_permissions() {
@@ -157,10 +161,16 @@ compatible(){
 if [ "$sdk_version_number" -le 33 ]; then
     print_log "start move cert !"
     print_log "current sdk version is $sdk_version_number"
+    
+    # 确保目录存在
+    mkdir -p $MODDIR/certificates
+    mkdir -p /data/misc/user/0/cacerts-added
+    
     print_log "Backup /system/etc/security/cacerts"
-    cp -u /system/etc/security/cacerts/* $MODDIR/certificates
+    cp /system/etc/security/cacerts/* $MODDIR/certificates/ 2>/dev/null || true
     print_log "Backup /data/misc/user/0/cacerts-added"
-    cp -u /data/misc/user/0/cacerts-added/* $MODDIR/certificates/
+    cp /data/misc/user/0/cacerts-added/* $MODDIR/certificates/ 2>/dev/null || true
+    
     # Android 13 or lower versions perform
     move_custom_cert
     fix_user_permissions
@@ -174,24 +184,31 @@ if [ "$sdk_version_number" -le 33 ]; then
     print_log "Install /system/etc/security/cacerts status:$?"
     fix_system_permissions
     print_log "certificates installed"
-    [ "$(getenforce)" = "Enforcing" ] || return 0
-    default_selinux_context=u:object_r:system_file:s0
-    if [ -n "$selinux_context" ] && [ "$selinux_context" != "?" ]; then
-        chcon -R $selinux_context /system/etc/security/cacerts
-    else
-        chcon -R $default_selinux_context /system/etc/security/cacerts
+    
+    if [ "$(getenforce)" = "Enforcing" ]; then
+        default_selinux_context=u:object_r:system_file:s0
+        if [ -n "$selinux_context" ] && [ "$selinux_context" != "?" ]; then
+            chcon -R $selinux_context /system/etc/security/cacerts
+        else
+            chcon -R $default_selinux_context /system/etc/security/cacerts
+        fi
     fi
 else
 
     print_log "start move cert !"
     print_log "current sdk version is $sdk_version_number"
     
+    # 确保目录存在
+    mkdir -p $MODDIR/certificates
+    mkdir -p /data/misc/user/0/cacerts-added
+    
     mount -t tmpfs tmpfs $MODDIR/certificates
     print_log "mount $MODDIR/certificates status:$?"
     print_log "Backup /apex/com.android.conscrypt/cacerts"
-    cp -u /apex/com.android.conscrypt/cacerts/* $MODDIR/certificates
+    cp /apex/com.android.conscrypt/cacerts/* $MODDIR/certificates/ 2>/dev/null || true
     print_log "Backup /data/misc/user/0/cacerts-added"
-    cp -u /data/misc/user/0/cacerts-added/* $MODDIR/certificates
+    cp /data/misc/user/0/cacerts-added/* $MODDIR/certificates/ 2>/dev/null || true
+    
     move_custom_cert
     fix_user_permissions
     fix_system_permissions14 $MODDIR/certificates
