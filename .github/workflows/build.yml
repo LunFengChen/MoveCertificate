@@ -1,0 +1,102 @@
+name: Build Module
+
+on:
+  push:
+    branches: [ main, master, iyue ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master, iyue ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (如 v1.0.0)'
+        required: false
+        default: 'v1.0.0'
+      cert_base64:
+        description: '证书 Base64 (可选，多个用 ||| 分隔)'
+        required: false
+
+# 使用方法：
+# 方式1: 在 certificates/ 目录上传证书文件，然后触发构建
+# 方式2: 手动触发时在 cert_base64 输入框粘贴证书的 base64 编码
+#        多个证书用 ||| 分隔，获取: cat cert.pem | base64 -w0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup Android NDK
+      uses: nttld/setup-ndk@v1
+      id: setup-ndk
+      with:
+        ndk-version: r25c
+    
+    - name: Build cert-hash tool
+      env:
+        ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      run: |
+        mkdir -p bin
+        TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+        echo "Building cert-hash for arm64..."
+        $TOOLCHAIN/bin/aarch64-linux-android21-clang -static -O2 -o bin/cert-hash-arm64 tools/cert-hash.c
+        echo "Building cert-hash for arm..."
+        $TOOLCHAIN/bin/armv7a-linux-androideabi21-clang -static -O2 -o bin/cert-hash-arm tools/cert-hash.c
+        ls -la bin/
+    
+    - name: Get version
+      id: version
+      run: |
+        if [[ "${{ github.event.inputs.version }}" != "" ]]; then
+          VERSION="${{ github.event.inputs.version }}"
+        elif [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+        else
+          VERSION="v1.0.0-$(git rev-parse --short HEAD)"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+    
+    - name: Process base64 certificates
+      if: ${{ github.event.inputs.cert_base64 != '' }}
+      run: |
+        mkdir -p certificates
+        echo "Processing base64 certificates..."
+        IFS='|||' read -ra CERTS <<< "${{ github.event.inputs.cert_base64 }}"
+        for i in "${!CERTS[@]}"; do
+          CERT_B64="${CERTS[$i]}"
+          [ -z "$CERT_B64" ] && continue
+          echo "$CERT_B64" | base64 -d > "certificates/cert_${i}.pem" 2>/dev/null && \
+            echo "Added: cert_${i}.pem"
+        done
+    
+    - name: Build module
+      run: |
+        chmod +x build.sh
+        # 复制 cert-hash 工具到模块
+        mkdir -p bin
+        if [ -d "certificates" ] && [ "$(ls -A certificates 2>/dev/null)" ]; then
+          ./build.sh -v ${{ steps.version.outputs.version }} -c ./certificates
+        else
+          ./build.sh -v ${{ steps.version.outputs.version }}
+        fi
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MoveCertificate-${{ steps.version.outputs.version }}
+        path: MoveCertificate-*.zip
+    
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ startsWith(github.ref, 'refs/tags/') && steps.version.outputs.version || 'latest' }}
+        name: ${{ startsWith(github.ref, 'refs/tags/') && steps.version.outputs.version || 'Latest Build' }}
+        files: MoveCertificate-*.zip
+        generate_release_notes: true
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

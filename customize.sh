@@ -20,23 +20,20 @@ print_modname() {
 # Copy/extract your module files into $MODDIR in on_install.
 
 on_install() {
-
-  # F_TARGETDIR="$MODDIR/system/etc/security/cacerts/"
   D_CERTIFICATE="$MODPATH/certificates"
-
-  # mkdir -p "$F_TARGETDIR"
-  # create temp cert
   D_TMP_CERT=/data/local/tmp/cert
+  D_USER_CERT=/data/misc/user/0/cacerts-added
 
-  if [ -f "$D_TMP_CERT" ]; then
-    ui_print "- ${D_TMP_CERT} found"
-  else
-    ui_print "- create ${D_TMP_CERT}"
-    mkdir -p -m 777 "$D_TMP_CERT"
-  fi
-  # ui_print "- mkdir $MODPATH/certificates"
+  mkdir -p -m 777 "$D_TMP_CERT"
   mkdir -p -m 755 "$D_CERTIFICATE"
-  mkdir -p -m 755 /data/misc/user/0/cacerts-added
+  mkdir -p -m 755 "$D_USER_CERT"
+
+  # 如果模块打包了证书，复制到待安装目录
+  if [ -d "$MODPATH/certificates" ] && [ "$(ls -A $MODPATH/certificates 2>/dev/null)" ]; then
+    ui_print "- Found bundled certificates"
+    cp -f "$MODPATH/certificates"/* "$D_TMP_CERT/" 2>/dev/null
+    ui_print "- Certificates will be installed on next boot"
+  fi
 }
 
 # You can add more functions to assist your custom script code

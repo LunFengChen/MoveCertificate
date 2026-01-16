@@ -1,8 +1,20 @@
+# Build output
 *.zip
+bin/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
 .DS_Store
-webdev
-webroot
-.idea
-node_modules
-package-lock.json
-.cache
+Thumbs.db
+
+# Temp
+*.log
+*.tmp
+
+# Keep directories
+!certificates/
+!screenshots/

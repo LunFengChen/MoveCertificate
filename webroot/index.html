@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoveCertificate</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui; background: #1a1a1a; color: #e0e0e0; padding: 16px; font-size: 14px; }
+        h1 { font-size: 20px; margin-bottom: 4px; }
+        .sub { font-size: 12px; color: #888; margin-bottom: 16px; }
+        .card { background: #2a2a2a; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+        .card-title { font-size: 13px; color: #888; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .card-title span { display: flex; align-items: center; gap: 6px; }
+        .badge { background: #6750A4; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 8px; }
+        .icon-btn { background: none; border: none; color: #888; cursor: pointer; padding: 4px; }
+        .cert { background: #333; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .dot.ok { background: #4caf50; } .dot.warn { background: #ff9800; } .dot.err { background: #f44336; } .dot.wait { background: #6750A4; }
+        .cert-info { flex: 1; min-width: 0; }
+        .cert-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .cert-meta { font-size: 11px; color: #888; margin-top: 2px; }
+        .cert-btn { color: #888; cursor: pointer; font-size: 20px; flex-shrink: 0; }
+        .empty { text-align: center; color: #666; padding: 16px; font-size: 13px; }
+        .card-path { font-size: 10px; color: #666; font-family: monospace; margin-bottom: 8px; padding: 0 4px; }
+        .log { background: #222; border-radius: 8px; padding: 10px; font-size: 11px; font-family: monospace; color: #888; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #444; padding: 10px 20px; border-radius: 8px; display: none; z-index: 10; }
+        .toast.show { display: block; }
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+        .modal.show { display: flex; }
+        .modal-content { background: #2a2a2a; border-radius: 16px; width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto; }
+        .modal-header { background: #6750A4; color: #fff; padding: 16px; border-radius: 16px 16px 0 0; }
+        .modal-header select { width: 100%; background: rgba(255,255,255,0.2); border: none; color: #fff; padding: 8px; border-radius: 8px; font-size: 14px; margin-top: 8px; }
+        .modal-body { padding: 16px; }
+        .info-section { margin-bottom: 16px; }
+        .info-title { font-size: 12px; color: #888; margin-bottom: 8px; font-weight: bold; }
+        .info-row { margin-bottom: 6px; }
+        .info-label { font-size: 11px; color: #888; }
+        .info-value { font-size: 13px; color: #e0e0e0; word-break: break-all; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 12px 16px; border-top: 1px solid #444; }
+        .modal-btn { padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+        .modal-btn.cancel { background: #444; color: #ccc; }
+    </style>
+</head>
+<body>
+    <h1>MoveCertificate</h1>
+    <div class="sub" id="ver">v1.0.0 · by x1a0f3n9</div>
+
+    <div class="card">
+        <div class="card-title"><span>已安装 <span class="badge" id="n1">0</span></span>
+            <button class="icon-btn" onclick="load1()"><span class="material-icons">refresh</span></button>
+        </div>
+        <div class="card-path">/data/misc/user/0/cacerts-added/</div>
+        <div id="list1"><div class="empty">加载中...</div></div>
+    </div>
+    <div class="card" id="card2">
+        <div class="card-title"><span>待安装 <span class="badge" style="background:#ff9800;color:#000" id="n2">0</span></span>
+            <button class="icon-btn" onclick="clearWait()"><span class="material-icons">delete</span></button>
+        </div>
+        <div class="card-path">/data/local/tmp/cert/ (*.0 *.pem *.crt *.cer)</div>
+        <div id="list2"><div class="empty">暂无</div></div>
+    </div>
+    <div class="card">
+        <div class="card-title"><span>候选区域 <span class="badge" id="n3">0</span></span>
+            <button class="icon-btn" onclick="load3()"><span class="material-icons">refresh</span></button>
+        </div>
+        <div class="card-path">/sdcard 及常见证书目录 (*.0 *.pem *.crt *.cer)</div>
+        <div id="list3"><div class="empty">点击刷新</div></div>
+    </div>
+    <div class="card">
+        <div class="card-title"><span>安装日志</span></div>
+        <div class="log" id="log">加载中...</div>
+    </div>
+    <div class="card">
+        <div class="card-title"><span>调试日志</span></div>
+        <div class="log" id="debug">初始化...</div>
+    </div>
+    <div class="toast" id="toast"></div>
+    <div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div style="font-size:14px">证书详情</div>
+                <select id="modalTitle"></select>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" onclick="closeModal()">关闭</button>
+                <button class="modal-btn" id="delBtn" style="background:#f44336;color:#fff;display:none" onclick="delFromWait()">移除</button>
+                <button class="modal-btn" id="addBtn" style="background:#6750A4;color:#fff;display:none" onclick="addToWait()">添加到待安装</button>
+            </div>
+        </div>
+    </div>
+<script>
+(function() {
+    'use strict';
+    var INSTALLED = '/data/misc/user/0/cacerts-added';
+    var WAITING = '/data/local/tmp/cert';
+    var SCAN_PATHS = [
+        '/storage/emulated/0',
+        '/storage/emulated/0/Download',
+        '/storage/emulated/0/Download/Reqable'
+    ];
+    var certs1 = [], certs2 = [], certs3 = [], hashes = {}, cbId = 0;
+    var KNOWN = {'9a5ba575':'PortSwigger CA','84040dbc':'Charles Proxy CA','0725b47c':'Fiddler Root CA','7f4536e6':'Reqable CA','e4fb11ae':'Reqable Proxy CA','c8750f0d':'Mitmproxy CA','0f4ed297':'AdGuard CA','364618e0':'ProxyPin CA','87bc3517':'HttpCanary CA','243f0bfb':'Packet Capture CA'};
+    function log(m){var el=document.getElementById('debug');el.textContent+=m+'\n';el.scrollTop=el.scrollHeight;}
+    function toast(m){var t=document.getElementById('toast');t.textContent=m;t.className='toast show';setTimeout(function(){t.className='toast';},2000);}
+    function exec(cmd){return new Promise(function(ok,fail){var cb='_c'+(++cbId)+'_'+Date.now();window[cb]=function(errno,stdout,stderr){delete window[cb];errno===0?ok(stdout||''):fail(new Error(stderr||'err='+errno));};try{ksu.exec(cmd,'{}',cb);}catch(e){delete window[cb];fail(e);}});}
+
+    // MD5 实现 (用于计算 subject_hash_old)
+    function md5(bytes) {
+        function rotl(x, n) { return (x << n) | (x >>> (32 - n)); }
+        function toWord(a, b, c, d) { return ((a & 0xff) | ((b & 0xff) << 8) | ((c & 0xff) << 16) | ((d & 0xff) << 24)) >>> 0; }
+        var K = [], S = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+        for (var i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 0x100000000) >>> 0;
+        var len = bytes.length, padded = bytes.slice();
+        padded.push(0x80);
+        while ((padded.length % 64) !== 56) padded.push(0);
+        var bits = len * 8;
+        for (var i = 0; i < 8; i++) padded.push((bits >>> (i * 8)) & 0xff);
+        var a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+        for (var chunk = 0; chunk < padded.length; chunk += 64) {
+            var M = [];
+            for (var j = 0; j < 16; j++) M[j] = toWord(padded[chunk + j * 4], padded[chunk + j * 4 + 1], padded[chunk + j * 4 + 2], padded[chunk + j * 4 + 3]);
+            var A = a0, B = b0, C = c0, D = d0;
+            for (var i = 0; i < 64; i++) {
+                var F, g;
+                if (i < 16) { F = (B & C) | ((~B >>> 0) & D); g = i; }
+                else if (i < 32) { F = (D & B) | ((~D >>> 0) & C); g = (5 * i + 1) % 16; }
+                else if (i < 48) { F = B ^ C ^ D; g = (3 * i + 5) % 16; }
+                else { F = C ^ (B | (~D >>> 0)); g = (7 * i) % 16; }
+                F = (F + A + K[i] + M[g]) >>> 0;
+                A = D; D = C; C = B; B = (B + rotl(F, S[i])) >>> 0;
+            }
+            a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0;
+        }
+        var result = [];
+        [a0, b0, c0, d0].forEach(function(v) { for (var i = 0; i < 4; i++) result.push((v >>> (i * 8)) & 0xff); });
+        return result;
+    }
+
+    // 计算 Android 证书 hash (subject_hash_old)
+    function calcSubjectHash(subjectDER) {
+        var hash = md5(subjectDER);
+        // 取前4字节，小端序转成 hex
+        var val = hash[0] | (hash[1] << 8) | (hash[2] << 16) | (hash[3] << 24);
+        return (val >>> 0).toString(16).padStart(8, '0');
+    }
+
+    // 重写的 ASN.1 解析器
+    function parsePEM(pem) {
+        try {
+            var b64 = pem.replace(/-----BEGIN CERTIFICATE-----/g, '').replace(/-----END CERTIFICATE-----/g, '').replace(/\s/g, '');
+            var bin = atob(b64);
+            var bytes = [];
+            for (var i = 0; i < bin.length; i++) bytes.push(bin.charCodeAt(i));
+            return parseASN1(bytes);
+        } catch(e) { log('解析错误: ' + e.message); return null; }
+    }
+
+    function parseASN1(bytes) {
+        var pos = 0;
+        function readLength() {
+            var len = bytes[pos++];
+            if ((len & 0x80) === 0) return len;
+            var numBytes = len & 0x7f;
+            len = 0;
+            for (var i = 0; i < numBytes; i++) len = (len << 8) | bytes[pos++];
+            return len;
+        }
+        function readTLV() {
+            var tag = bytes[pos++];
+            var len = readLength();
+            var value = bytes.slice(pos, pos + len);
+            pos += len;
+            return { tag: tag, len: len, value: value, end: pos };
+        }
+        function bytesToString(arr) {
+            var s = '';
+            for (var i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]);
+            return s;
+        }
+        function bytesToHex(arr) {
+            return arr.map(function(b) { return ('0' + b.toString(16)).slice(-2).toUpperCase(); }).join(':');
+        }
+        function parseTime(arr) {
+            var s = bytesToString(arr);
+            var y, m, d;
+            if (arr.length === 13) { // UTCTime YYMMDDHHMMSSZ
+                y = parseInt(s.substr(0, 2), 10);
+                y = y >= 50 ? 1900 + y : 2000 + y;
+                m = parseInt(s.substr(2, 2), 10);
+                d = parseInt(s.substr(4, 2), 10);
+            } else { // GeneralizedTime YYYYMMDDHHMMSSZ
+                y = parseInt(s.substr(0, 4), 10);
+                m = parseInt(s.substr(4, 2), 10);
+                d = parseInt(s.substr(6, 2), 10);
+            }
+            return { year: y, month: m, day: d };
+        }
+        var OID_MAP = {
+            '55,04,03': 'CN', '55,04,06': 'C', '55,04,07': 'L',
+            '55,04,08': 'ST', '55,04,0a': 'O', '55,04,0b': 'OU'
+        };
+        function parseOID(arr) {
+            return arr.map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join(',');
+        }
+        function parseName(value) {
+            var result = {}, p = 0;
+            while (p < value.length) {
+                if (value[p] !== 0x31) { p++; continue; }
+                p++;
+                var setLen = value[p++];
+                if (setLen & 0x80) { var n = setLen & 0x7f; setLen = 0; for (var i = 0; i < n; i++) setLen = (setLen << 8) | value[p++]; }
+                var setEnd = p + setLen;
+                while (p < setEnd) {
+                    if (value[p] !== 0x30) { p++; continue; }
+                    p++;
+                    var seqLen = value[p++];
+                    if (seqLen & 0x80) { var n = seqLen & 0x7f; seqLen = 0; for (var i = 0; i < n; i++) seqLen = (seqLen << 8) | value[p++]; }
+                    if (value[p] !== 0x06) { p += seqLen; continue; }
+                    p++;
+                    var oidLen = value[p++];
+                    var oid = parseOID(value.slice(p, p + oidLen));
+                    p += oidLen;
+                    var valTag = value[p++];
+                    var valLen = value[p++];
+                    if (valLen & 0x80) { var n = valLen & 0x7f; valLen = 0; for (var i = 0; i < n; i++) valLen = (valLen << 8) | value[p++]; }
+                    var val = bytesToString(value.slice(p, p + valLen));
+                    p += valLen;
+                    var key = OID_MAP[oid] || oid;
+                    result[key] = val;
+                }
+                p = setEnd;
+            }
+            return result;
+        }
+
+        // 主解析逻辑
+        try {
+            var cert = readTLV(); // 外层 SEQUENCE
+            pos = 0; pos++; readLength(); // 跳过外层
+            var tbsCert = readTLV(); // TBSCertificate SEQUENCE
+            var tbsBytes = tbsCert.value;
+            var tp = 0;
+            
+            // 解析 TBSCertificate 内容
+            function readTLVFrom(arr, start) {
+                var p = start;
+                var tag = arr[p++];
+                var len = arr[p++];
+                if (len & 0x80) { var n = len & 0x7f; len = 0; for (var i = 0; i < n; i++) len = (len << 8) | arr[p++]; }
+                return { tag: tag, len: len, value: arr.slice(p, p + len), end: p + len, start: start };
+            }
+            
+            // 跳过 version (如果存在 [0] EXPLICIT)
+            if (tbsBytes[tp] === 0xa0) {
+                var v = readTLVFrom(tbsBytes, tp);
+                tp = v.end;
+            }
+            
+            // serialNumber
+            var serial = readTLVFrom(tbsBytes, tp);
+            tp = serial.end;
+            var serialHex = bytesToHex(serial.value);
+            
+            // signature algorithm
+            var sigAlg = readTLVFrom(tbsBytes, tp);
+            tp = sigAlg.end;
+            
+            // issuer
+            var issuer = readTLVFrom(tbsBytes, tp);
+            tp = issuer.end;
+            var issuerInfo = parseName(issuer.value);
+            
+            // validity
+            var validity = readTLVFrom(tbsBytes, tp);
+            tp = validity.end;
+            var vp = 0;
+            var notBefore = readTLVFrom(validity.value, vp);
+            vp = notBefore.end;
+            var notAfter = readTLVFrom(validity.value, vp);
+            var validFrom = parseTime(notBefore.value);
+            var validTo = parseTime(notAfter.value);
+            
+            // subject
+            var subject = readTLVFrom(tbsBytes, tp);
+            var subjectInfo = parseName(subject.value);
+            
+            // 获取完整的 subject DER (包含 tag 和 length)
+            var subjectDER = tbsBytes.slice(subject.start, subject.end);
+            
+            return {
+                subject: subjectInfo,
+                issuer: issuerInfo,
+                serial: serialHex,
+                validFrom: validFrom.year + '-' + ('0'+validFrom.month).slice(-2) + '-' + ('0'+validFrom.day).slice(-2),
+                validTo: validTo.year + '-' + ('0'+validTo.month).slice(-2) + '-' + ('0'+validTo.day).slice(-2),
+                subjectDER: subjectDER
+            };
+        } catch(e) {
+            log('ASN1解析失败: ' + e.message);
+            return null;
+        }
+    }
+
+    function formatName(info) {
+        var parts = [];
+        if (info.CN) parts.push('CN=' + info.CN);
+        if (info.O) parts.push('O=' + info.O);
+        if (info.OU) parts.push('OU=' + info.OU);
+        if (info.L) parts.push('L=' + info.L);
+        if (info.ST) parts.push('ST=' + info.ST);
+        if (info.C) parts.push('C=' + info.C);
+        return parts.join(', ') || '-';
+    }
+
+    var currentCertPath = null;
+    var currentCertType = null; // 'installed', 'waiting', 'candidate'
+
+    window.showCertDetail = function(path, pem, hash, type) {
+        currentCertPath = path;
+        currentCertType = type || 'installed';
+        var info = parsePEM(pem);
+        var body = document.getElementById('modalBody');
+        var title = document.getElementById('modalTitle');
+        var addBtn = document.getElementById('addBtn');
+        var delBtn = document.getElementById('delBtn');
+        
+        // 候选证书显示添加按钮，待安装证书显示删除按钮
+        addBtn.style.display = (currentCertType === 'candidate') ? 'block' : 'none';
+        delBtn.style.display = (currentCertType === 'waiting') ? 'block' : 'none';
+        
+        var name = (info && info.subject && info.subject.CN) ? info.subject.CN : (KNOWN[hash] || hash);
+        title.innerHTML = '<option>' + name + '</option>';
+        
+        var html = '';
+        html += '<div class="info-section"><div class="info-title">主体信息</div>';
+        if (info && info.subject) {
+            if (info.subject.CN) html += '<div class="info-row"><div class="info-label">通用名称 (CN)</div><div class="info-value">' + info.subject.CN + '</div></div>';
+            if (info.subject.O) html += '<div class="info-row"><div class="info-label">组织 (O)</div><div class="info-value">' + info.subject.O + '</div></div>';
+            if (info.subject.OU) html += '<div class="info-row"><div class="info-label">组织单位 (OU)</div><div class="info-value">' + (info.subject.OU || '-') + '</div></div>';
+            if (info.subject.L) html += '<div class="info-row"><div class="info-label">城市 (L)</div><div class="info-value">' + info.subject.L + '</div></div>';
+            if (info.subject.ST) html += '<div class="info-row"><div class="info-label">省份 (ST)</div><div class="info-value">' + (info.subject.ST || '-') + '</div></div>';
+            if (info.subject.C) html += '<div class="info-row"><div class="info-label">国家 (C)</div><div class="info-value">' + info.subject.C + '</div></div>';
+        } else {
+            html += '<div class="info-row"><div class="info-value">解析失败</div></div>';
+        }
+        html += '</div>';
+        
+        html += '<div class="info-section"><div class="info-title">颁发者信息</div>';
+        if (info && info.issuer) {
+            html += '<div class="info-row"><div class="info-label">颁发者</div><div class="info-value">' + formatName(info.issuer) + '</div></div>';
+        } else {
+            html += '<div class="info-row"><div class="info-value">-</div></div>';
+        }
+        html += '</div>';
+        
+        html += '<div class="info-section"><div class="info-title">证书信息</div>';
+        html += '<div class="info-row"><div class="info-label">序列号</div><div class="info-value">' + (info && info.serial ? info.serial : '-') + '</div></div>';
+        html += '<div class="info-row"><div class="info-label">有效期从</div><div class="info-value">' + (info && info.validFrom ? info.validFrom : '-') + '</div></div>';
+        html += '<div class="info-row"><div class="info-label">有效期至</div><div class="info-value">' + (info && info.validTo ? info.validTo : '-') + '</div></div>';
+        html += '</div>';
+        
+        html += '<div class="info-section"><div class="info-title">文件信息</div>';
+        html += '<div class="info-row"><div class="info-label">文件路径</div><div class="info-value">' + path + '</div></div>';
+        html += '<div class="info-row"><div class="info-label">Hash</div><div class="info-value">' + hash + '</div></div>';
+        html += '</div>';
+        
+        body.innerHTML = html;
+        document.getElementById('modal').className = 'modal show';
+    };
+
+    window.closeModal = function() {
+        document.getElementById('modal').className = 'modal';
+    };
+
+    window.addToWait = function() {
+        if (!currentCertPath) return;
+        var hash = currentCertPath.split('/').pop().replace('.0', '');
+        exec('mkdir -p "' + WAITING + '" && cp "' + currentCertPath + '" "' + WAITING + '/"').then(function() {
+            toast('已添加到待安装');
+            closeModal();
+            load2();
+            load3();
+        }).catch(function(e) { toast('添加失败: ' + e.message); });
+    };
+
+    window.removeCert2 = function(hash) {
+        exec('rm -f "' + WAITING + '/' + hash + '.0"').then(function() {
+            toast('已移除');
+            load2();
+            load3();
+        }).catch(function(e) { toast('移除失败'); });
+    };
+
+    window.delFromWait = function() {
+        if (!currentCertPath) return;
+        var hash = currentCertPath.split('/').pop().replace('.0', '');
+        exec('rm -f "' + WAITING + '/' + hash + '.0"').then(function() {
+            toast('已移除');
+            closeModal();
+            load2();
+            load3();
+        }).catch(function(e) { toast('移除失败'); });
+    };
+
+    window.quickAdd = function(path, isPEM, hash, pem) {
+        log('快速添加: ' + path);
+        if (isPEM && pem) {
+            // PEM 文件需要转换成 hash.0 格式
+            var targetPath = WAITING + '/' + hash + '.0';
+            exec('mkdir -p "' + WAITING + '" && cat > "' + targetPath + '" << \'CERTEOF\'\n' + pem + '\nCERTEOF').then(function() {
+                toast('已添加');
+                load2();
+                load3();
+            }).catch(function(e) { 
+                log('添加失败: ' + e.message);
+                toast('添加失败'); 
+            });
+        } else {
+            exec('mkdir -p "' + WAITING + '" && cp "' + path + '" "' + WAITING + '/"').then(function() {
+                toast('已添加');
+                load2();
+                load3();
+            }).catch(function(e) { 
+                log('添加失败: ' + e.message);
+                toast('添加失败'); 
+            });
+        }
+    };
+
+    function render1() {
+        var el = document.getElementById('list1');
+        document.getElementById('n1').textContent = certs1.length;
+        if (!certs1.length) { el.innerHTML = '<div class="empty">暂无已安装证书</div>'; return; }
+        el.innerHTML = certs1.map(function(c) {
+            var name = KNOWN[c.hash] || c.hash;
+            return '<div class="cert" onclick="clickCert1(\'' + c.hash + '\')"><div class="dot ok"></div><div class="cert-info"><div class="cert-name">' + name + '</div><div class="cert-meta">' + c.hash + '.0</div></div><span class="cert-btn material-icons">chevron_right</span></div>';
+        }).join('');
+    }
+
+    function render2() {
+        var el = document.getElementById('list2');
+        document.getElementById('n2').textContent = certs2.length;
+        if (!certs2.length) { el.innerHTML = '<div class="empty">暂无待安装证书</div>'; return; }
+        el.innerHTML = certs2.map(function(c, idx) {
+            var cn = c.cn || KNOWN[c.hash] || c.hash;
+            var name = cn + ' => ' + c.hash + '.0';
+            return '<div class="cert" data-hash="' + c.hash + '"><div class="dot wait"></div><div class="cert-info"><div class="cert-name">' + name + '</div><div class="cert-meta">待安装 · 重启后生效</div></div><span class="cert-btn cert-del material-icons" style="color:#f44336">remove_circle</span></div>';
+        }).join('');
+        el.querySelectorAll('.cert').forEach(function(item) {
+            var hash = item.getAttribute('data-hash');
+            var c = certs2.find(function(x) { return x.hash === hash; });
+            item.querySelector('.cert-info').onclick = function(e) {
+                e.stopPropagation();
+                if (c && c.pem) {
+                    showCertDetail(c.path, c.pem, c.hash, 'waiting');
+                } else {
+                    clickCert2(hash);
+                }
+            };
+            item.querySelector('.cert-del').onclick = function(e) {
+                e.stopPropagation();
+                removeCert2(hash);
+            };
+        });
+    }
+
+    function render3() {
+        var el = document.getElementById('list3');
+        document.getElementById('n3').textContent = certs3.length;
+        if (!certs3.length) { el.innerHTML = '<div class="empty">未找到候选证书</div>'; return; }
+        el.innerHTML = certs3.map(function(c, idx) {
+            // 去掉括号内容
+            var cn = c.cn || KNOWN[c.hash] || c.hash;
+            cn = cn.replace(/\s*\([^)]*\)/g, '').trim();
+            var name = cn + ' => ' + c.hash + '.0';
+            return '<div class="cert" data-idx="' + idx + '"><div class="dot warn"></div><div class="cert-info"><div class="cert-name">' + name + '</div><div class="cert-meta">' + c.path + '</div></div><span class="cert-btn cert-add material-icons" style="color:#4caf50">add_circle</span></div>';
+        }).join('');
+        el.querySelectorAll('.cert').forEach(function(item) {
+            var idx = parseInt(item.getAttribute('data-idx'));
+            var c = certs3[idx];
+            item.querySelector('.cert-info').onclick = function(e) {
+                e.stopPropagation();
+                showCertDetail(c.path, c.pem, c.hash, 'candidate');
+            };
+            item.querySelector('.cert-add').onclick = function(e) {
+                e.stopPropagation();
+                quickAdd(c.path, c.isPEM, c.hash, c.pem);
+            };
+        });
+    }
+
+    window.clickCert1 = function(hash) {
+        var path = INSTALLED + '/' + hash + '.0';
+        exec('cat "' + path + '"').then(function(pem) {
+            showCertDetail(path, pem, hash, 'installed');
+        }).catch(function(e) { toast('读取失败'); });
+    };
+
+    window.clickCert2 = function(hash) {
+        var path = WAITING + '/' + hash + '.0';
+        exec('cat "' + path + '"').then(function(pem) {
+            showCertDetail(path, pem, hash, 'waiting');
+        }).catch(function(e) { toast('读取失败'); });
+    };
+
+    window.clickCert3 = function(path) {
+        log('点击候选: ' + path);
+        var hash = path.split('/').pop().replace('.0', '');
+        exec('cat "' + path + '"').then(function(pem) {
+            log('读取成功, 长度: ' + pem.length);
+            showCertDetail(path, pem, hash, 'candidate');
+        }).catch(function(e) { 
+            log('读取失败: ' + e.message);
+            toast('读取失败'); 
+        });
+    };
+
+    window.load1 = function() {
+        log('加载已安装...');
+        exec('ls "' + INSTALLED + '" 2>/dev/null || echo ""').then(function(out) {
+            certs1 = [];
+            var lines = out.trim().split('\n').filter(function(l) { return l && l.endsWith('.0'); });
+            lines.forEach(function(f) { certs1.push({ hash: f.replace('.0', ''), path: INSTALLED + '/' + f }); });
+            log('已安装: ' + certs1.length);
+            render1();
+        }).catch(function(e) { log('加载失败: ' + e.message); render1(); });
+    };
+
+    window.load2 = function() {
+        log('加载待安装...');
+        // 扫描所有证书格式
+        exec('ls "' + WAITING + '" 2>/dev/null || echo ""').then(function(out) {
+            certs2 = [];
+            var lines = out.trim().split('\n').filter(function(l) {
+                if (!l || l.length === 0) return false;
+                var ext = l.split('.').pop().toLowerCase();
+                return ext === '0' || ext === 'pem' || ext === 'crt' || ext === 'cer';
+            });
+            var pending = lines.length;
+            if (pending === 0) { log('待安装: 0'); render2(); return; }
+            
+            lines.forEach(function(f) {
+                var path = WAITING + '/' + f;
+                var ext = f.split('.').pop().toLowerCase();
+                
+                exec('cat "' + path + '"').then(function(pem) {
+                    if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
+                        var info = parsePEM(pem);
+                        var cn = null, hash = null;
+                        
+                        if (info && info.subject && info.subject.CN) {
+                            cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
+                        }
+                        if (info && info.subjectDER) {
+                            hash = calcSubjectHash(info.subjectDER);
+                        }
+                        
+                        if (ext === '0') {
+                            // 已经是 .0 格式
+                            hash = f.replace('.0', '');
+                            certs2.push({ hash: hash, path: path, cn: cn, pem: pem });
+                            if (--pending === 0) { log('待安装: ' + certs2.length); render2(); }
+                        } else if (hash) {
+                            // 非 .0 格式，自动转换
+                            var newPath = WAITING + '/' + hash + '.0';
+                            exec('mv "' + path + '" "' + newPath + '"').then(function() {
+                                log('转换: ' + f + ' => ' + hash + '.0');
+                                certs2.push({ hash: hash, path: newPath, cn: cn, pem: pem });
+                                if (--pending === 0) { log('待安装: ' + certs2.length); render2(); }
+                            }).catch(function() {
+                                certs2.push({ hash: hash, path: path, cn: cn, pem: pem });
+                                if (--pending === 0) { log('待安装: ' + certs2.length); render2(); }
+                            });
+                        } else {
+                            if (--pending === 0) { log('待安装: ' + certs2.length); render2(); }
+                        }
+                    } else {
+                        if (--pending === 0) { log('待安装: ' + certs2.length); render2(); }
+                    }
+                }).catch(function() {
+                    if (--pending === 0) { log('待安装: ' + certs2.length); render2(); }
+                });
+            });
+        }).catch(function(e) { log('加载失败: ' + e.message); render2(); });
+    };
+
+    window.load3 = function() {
+        log('扫描候选证书...');
+        certs3 = [];
+        var pending = SCAN_PATHS.length;
+        
+        SCAN_PATHS.forEach(function(scanPath) {
+            exec('find "' + scanPath + '" -maxdepth 2 \\( -name "*.0" -o -name "*.pem" -o -name "*.crt" -o -name "*.cer" \\) 2>/dev/null | head -20').then(function(out) {
+                var lines = out.trim().split('\n').filter(function(l) { return l && l.length > 0; });
+                
+                var filePending = lines.length;
+                if (filePending === 0) {
+                    if (--pending === 0) { log('候选: ' + certs3.length); render3(); }
+                    return;
+                }
+                
+                lines.forEach(function(p) {
+                    exec('cat "' + p + '"').then(function(pem) {
+                        if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
+                            var info = parsePEM(pem);
+                            var hash = null, cn = null;
+                            var ext = p.split('.').pop().toLowerCase();
+                            
+                            if (ext === '0') {
+                                hash = p.split('/').pop().replace('.0', '');
+                            } else if (info && info.subjectDER) {
+                                hash = calcSubjectHash(info.subjectDER);
+                            }
+                            if (info && info.subject && info.subject.CN) {
+                                cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
+                            }
+                            
+                            if (hash && !certs1.some(function(c) { return c.hash === hash; }) 
+                                     && !certs2.some(function(c) { return c.hash === hash; })
+                                     && !certs3.some(function(c) { return c.hash === hash; })) {
+                                certs3.push({ hash: hash, path: p, isPEM: ext !== '0', pem: pem, cn: cn });
+                            }
+                        }
+                        if (--filePending === 0 && --pending === 0) { log('候选: ' + certs3.length); render3(); }
+                    }).catch(function() {
+                        if (--filePending === 0 && --pending === 0) { log('候选: ' + certs3.length); render3(); }
+                    });
+                });
+            }).catch(function() {
+                if (--pending === 0) { log('候选: ' + certs3.length); render3(); }
+            });
+        });
+    };
+
+    window.clearWait = function() {
+        if (!confirm('清空待安装列表？')) return;
+        exec('rm -rf "' + WAITING + '"/*').then(function() {
+            toast('已清空');
+            load2();
+        }).catch(function(e) { toast('清空失败'); });
+    };
+
+    function loadLog() {
+        exec('cat /data/adb/modules/MoveCertificate/install.log 2>/dev/null || echo "暂无日志"').then(function(out) {
+            document.getElementById('log').textContent = out || '暂无日志';
+        }).catch(function() {
+            document.getElementById('log').textContent = '暂无日志';
+        });
+    }
+
+    // 初始化
+    log('WebUI 启动');
+    load1();
+    load2();
+    load3();
+    loadLog();
+})();
+</script>
+</body>
+</html>

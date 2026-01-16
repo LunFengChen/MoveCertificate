@@ -15,7 +15,7 @@ sdk_version_number=$(expr "$sdk_version" + 0)
 
 # add logcat
 LOG_PATH="$MODDIR/install.log"
-LOG_TAG="iyue"
+LOG_TAG="x1a0f3n9"
 
 # Keep only one up-to-date log
 echo "[$LOG_TAG] Keep only one up-to-date log" >$LOG_PATH
@@ -24,14 +24,70 @@ print_log() {
     echo "[$LOG_TAG] $@" >>$LOG_PATH
 }
 
-move_custom_cert() {
-    if [ "$(ls -A /data/local/tmp/cert)" ]; then
-        cp -f /data/local/tmp/cert/* $MODDIR/certificates
-        cp -f /data/local/tmp/cert/* /data/misc/user/0/cacerts-added/
-    else
-        print_log "The directory '/data/local/tmp/cert' is empty."
+# cert-hash 工具路径
+get_cert_hash_bin() {
+    local arch=$(getprop ro.product.cpu.abi)
+    case "$arch" in
+        arm64*) echo "$MODDIR/bin/cert-hash-arm64" ;;
+        armeabi*|arm*) echo "$MODDIR/bin/cert-hash-arm" ;;
+        *) echo "$MODDIR/bin/cert-hash-arm64" ;;
+    esac
+}
+
+# 转换证书为 hash.0 格式
+convert_cert() {
+    local src="$1"
+    local dest_dir="$2"
+    local filename=$(basename "$src")
+    local ext="${filename##*.}"
+    
+    # 如果已经是 .0 格式，直接复制
+    if [ "$ext" = "0" ]; then
+        cp -f "$src" "$dest_dir/"
+        print_log "Copy: $filename"
+        return 0
     fi
-    print_log "Install /data/local/tmp/cert status:$?"
+    
+    # 检查是否是证书文件
+    case "$ext" in
+        pem|crt|cer|PEM|CRT|CER) ;;
+        *) return 1 ;;
+    esac
+    
+    # 使用 cert-hash 计算 hash
+    local cert_hash_bin=$(get_cert_hash_bin)
+    if [ -x "$cert_hash_bin" ]; then
+        local hash=$("$cert_hash_bin" "$src" 2>/dev/null)
+        if [ -n "$hash" ] && [ ${#hash} -eq 8 ]; then
+            cp -f "$src" "$dest_dir/${hash}.0"
+            print_log "Convert: $filename -> ${hash}.0"
+            return 0
+        fi
+    fi
+    
+    # 如果 cert-hash 失败，直接复制原文件
+    cp -f "$src" "$dest_dir/"
+    print_log "Copy (no convert): $filename"
+    return 0
+}
+
+move_custom_cert() {
+    local src_dir="/data/local/tmp/cert"
+    if [ ! -d "$src_dir" ] || [ -z "$(ls -A "$src_dir" 2>/dev/null)" ]; then
+        print_log "The directory '$src_dir' is empty."
+        return
+    fi
+    
+    # 设置 cert-hash 可执行权限
+    local cert_hash_bin=$(get_cert_hash_bin)
+    [ -f "$cert_hash_bin" ] && chmod +x "$cert_hash_bin"
+    
+    for cert in "$src_dir"/*; do
+        [ -f "$cert" ] || continue
+        convert_cert "$cert" "$MODDIR/certificates"
+        convert_cert "$cert" "/data/misc/user/0/cacerts-added"
+    done
+    print_log "Install $src_dir status:$?"
 }
 
 fix_user_permissions() {
