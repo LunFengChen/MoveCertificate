@@ -38,7 +38,7 @@ description=Move certificates to system store. Magisk/KernelSU/APatch. Android 7
 EOF
 
 # 更新 WebUI 版本
-sed -i "s|v[0-9.]*\s*·\s*by\s*[^<]*|$VERSION · by $AUTHOR|" webroot/index.html
+sed -i "s|v[0-9.]*\s*·\s*by\s*[^<]*|$VERSION · by $AUTHOR|" webroot/index.html 2>/dev/null || true
 
 # 自定义扫描目录
 if [ -n "$SCAN_DIRS" ]; then
@@ -59,9 +59,14 @@ fi
 rm -f MoveCertificate-*.zip
 OUTPUT="MoveCertificate-${AUTHOR}.zip"
 
-zip -r "$OUTPUT" META-INF webroot module.prop post-fs-data.sh service.sh system.prop customize.sh \
-    $([ -d certificates ] && echo "certificates") \
-    $([ -d bin ] && echo "bin") \
+# 基础文件列表
+FILES="META-INF webroot module.prop post-fs-data.sh service.sh system.prop customize.sh"
+
+# 添加可选目录
+[ -d certificates ] && FILES="$FILES certificates"
+[ -d bin ] && FILES="$FILES bin"
+
+zip -r "$OUTPUT" $FILES \
     -x "*.git*" -x "*.idea*" -x "*.vscode*" -x "build.sh" -x "config.sh" -x "tools/*"
 
 rm -rf certificates 2>/dev/null || true

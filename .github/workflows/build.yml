@@ -75,13 +75,15 @@ jobs:
     - name: Build module
       run: |
         chmod +x build.sh
-        # 复制 cert-hash 工具到模块
-        mkdir -p bin
+        ls -la
+        ls -la bin/ || true
         if [ -d "certificates" ] && [ "$(ls -A certificates 2>/dev/null)" ]; then
           ./build.sh -v ${{ steps.version.outputs.version }} -c ./certificates
         else
           ./build.sh -v ${{ steps.version.outputs.version }}
         fi
+        # 验证 zip 结构
+        unzip -l MoveCertificate-*.zip | head -20
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
