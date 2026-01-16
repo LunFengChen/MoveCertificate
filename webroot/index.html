@@ -51,7 +51,7 @@
         <div class="card-title"><span>已安装 <span class="badge" id="n1">0</span></span>
             <button class="icon-btn" onclick="load1()"><span class="material-icons">refresh</span></button>
         </div>
-        <div class="card-path">/data/misc/user/0/cacerts-added/</div>
+        <div class="card-path">/data/adb/modules/MoveCertificate/certificates/</div>
         <div id="list1"><div class="empty">加载中...</div></div>
     </div>
     <div class="card" id="card2">
@@ -86,6 +86,7 @@
             <div class="modal-body" id="modalBody"></div>
             <div class="modal-footer">
                 <button class="modal-btn cancel" onclick="closeModal()">关闭</button>
+                <button class="modal-btn" id="exportBtn" style="background:#2196F3;color:#fff;display:none" onclick="exportCert()">导出</button>
                 <button class="modal-btn" id="delBtn" style="background:#f44336;color:#fff;display:none" onclick="delFromWait()">移除</button>
                 <button class="modal-btn" id="addBtn" style="background:#6750A4;color:#fff;display:none" onclick="addToWait()">添加到待安装</button>
             </div>
@@ -94,7 +95,8 @@
 <script>
 (function() {
     'use strict';
-    var INSTALLED = '/data/misc/user/0/cacerts-added';
+    var MODDIR = '/data/adb/modules/MoveCertificate';
+    var MODULE_CERTS = MODDIR + '/certificates';
     var WAITING = '/data/local/tmp/cert';
     var SCAN_PATHS = [
         '/storage/emulated/0',
@@ -317,19 +319,25 @@
 
     var currentCertPath = null;
     var currentCertType = null; // 'installed', 'waiting', 'candidate'
+    var currentCertPem = null;
+    var currentCertHash = null;
 
     window.showCertDetail = function(path, pem, hash, type) {
         currentCertPath = path;
         currentCertType = type || 'installed';
+        currentCertPem = pem;
+        currentCertHash = hash;
         var info = parsePEM(pem);
         var body = document.getElementById('modalBody');
         var title = document.getElementById('modalTitle');
         var addBtn = document.getElementById('addBtn');
         var delBtn = document.getElementById('delBtn');
+        var exportBtn = document.getElementById('exportBtn');
         
-        // 候选证书显示添加按钮，待安装证书显示删除按钮
+        // 候选证书显示添加按钮，待安装证书显示删除按钮，有 pem 内容的显示导出按钮
         addBtn.style.display = (currentCertType === 'candidate') ? 'block' : 'none';
         delBtn.style.display = (currentCertType === 'waiting') ? 'block' : 'none';
+        exportBtn.style.display = pem ? 'block' : 'none';
         
         var name = (info && info.subject && info.subject.CN) ? info.subject.CN : (KNOWN[hash] || hash);
         title.innerHTML = '<option>' + name + '</option>';
@@ -375,6 +383,17 @@
         document.getElementById('modal').className = 'modal';
     };
 
+    window.exportCert = function() {
+        if (!currentCertPem || !currentCertHash) return;
+        var exportPath = '/sdcard/' + currentCertHash + '.0';
+        exec('cat > "' + exportPath + '" << \'CERTEOF\'\n' + currentCertPem + '\nCERTEOF').then(function() {
+            toast('已导出到 ' + exportPath);
+        }).catch(function(e) { 
+            log('导出失败: ' + e.message);
+            toast('导出失败'); 
+        });
+    };
+
     window.addToWait = function() {
         if (!currentCertPath) return;
         var hash = currentCertPath.split('/').pop().replace('.0', '');
@@ -384,6 +403,20 @@
             load2();
             load3();
         }).catch(function(e) { toast('添加失败: ' + e.message); });
+    };
+
+    window.removeCert1 = function(hash) {
+        // 删除用户安装的证书：从 certificates/ 删除文件，从 installed.list 删除记录
+        var certPath = MODULE_CERTS + '/' + hash + '.0';
+        var listPath = MODDIR + '/installed.list';
+        
+        exec('rm -f "' + certPath + '" && sed -i "/^' + hash + ':/d" "' + listPath + '"').then(function() {
+            toast('已移除，重启后生效');
+            load1();
+        }).catch(function(e) { 
+            log('移除失败: ' + e.message);
+            toast('移除失败'); 
+        });
     };
 
     window.removeCert2 = function(hash) {
@@ -437,8 +470,20 @@
         el.innerHTML = certs1.map(function(c) {
             var cn = c.cn || KNOWN[c.hash] || c.hash;
             var name = cn + ' => ' + c.hash + '.0';
-            return '<div class="cert" onclick="clickCert1(\'' + c.hash + '\')"><div class="dot ok"></div><div class="cert-info"><div class="cert-name">' + name + '</div><div class="cert-meta">已安装</div></div><span class="cert-btn material-icons">chevron_right</span></div>';
+            var isBuiltin = c.source === 'builtin';
+            var sourceText = isBuiltin ? '模块内置，已安装' : '已安装';
+            var delBtn = isBuiltin ? '' : '<span class="cert-btn cert-del material-icons" style="color:#f44336" data-hash="' + c.hash + '">remove_circle</span>';
+            return '<div class="cert" data-hash="' + c.hash + '"><div class="dot ok"></div><div class="cert-info" onclick="clickCert1(\'' + c.hash + '\')"><div class="cert-name">' + name + '</div><div class="cert-meta">' + sourceText + '</div></div>' + delBtn + '</div>';
         }).join('');
+        
+        // 绑定删除按钮事件
+        el.querySelectorAll('.cert-del').forEach(function(btn) {
+            btn.onclick = function(e) {
+                e.stopPropagation();
+                var hash = btn.getAttribute('data-hash');
+                removeCert1(hash);
+            };
+        });
     }
 
     function render2() {
@@ -494,10 +539,16 @@
     }
 
     window.clickCert1 = function(hash) {
-        var path = INSTALLED + '/' + hash + '.0';
-        exec('cat "' + path + '"').then(function(pem) {
-            showCertDetail(path, pem, hash, 'installed');
-        }).catch(function(e) { toast('读取失败'); });
+        var c = certs1.find(function(x) { return x.hash === hash; });
+        if (!c) { toast('证书未找到'); return; }
+        var path = c.path;
+        if (c.pem) {
+            showCertDetail(path, c.pem, hash, 'installed');
+        } else {
+            exec('cat "' + path + '"').then(function(pem) {
+                showCertDetail(path, pem, hash, 'installed');
+            }).catch(function(e) { toast('读取失败'); });
+        }
     };
 
     window.clickCert2 = function(hash) {
@@ -521,15 +572,26 @@
 
     window.load1 = function() {
         log('加载已安装...');
-        exec('ls "' + INSTALLED + '" 2>/dev/null || echo ""').then(function(out) {
-            certs1 = [];
-            var lines = out.trim().split('\n').filter(function(l) { return l && l.endsWith('.0'); });
+        certs1 = [];
+        
+        // 读取 installed.list
+        exec('cat "' + MODDIR + '/installed.list" 2>/dev/null || echo ""').then(function(listContent) {
+            var lines = listContent.trim().split('\n').filter(function(l) { return l && l.indexOf(':') > 0; });
             var pending = lines.length;
-            if (pending === 0) { log('已安装: 0'); render1(); return; }
             
-            lines.forEach(function(f) {
-                var hash = f.replace('.0', '');
-                var path = INSTALLED + '/' + f;
+            if (pending === 0) {
+                log('已安装: 0');
+                render1();
+                return;
+            }
+            
+            lines.forEach(function(line) {
+                var parts = line.split(':');
+                var hash = parts[0];
+                var source = parts[1]; // builtin 或 user
+                
+                // 所有证书都从 certificates/ 读取
+                var path = MODULE_CERTS + '/' + hash + '.0';
                 exec('cat "' + path + '"').then(function(pem) {
                     var cn = null;
                     if (pem.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
@@ -538,10 +600,10 @@
                             cn = info.subject.CN.replace(/\s*\([^)]*\)/g, '').trim();
                         }
                     }
-                    certs1.push({ hash: hash, path: path, cn: cn, pem: pem });
+                    certs1.push({ hash: hash, path: path, cn: cn, pem: pem, source: source });
                     if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
                 }).catch(function() {
-                    certs1.push({ hash: hash, path: path });
+                    certs1.push({ hash: hash, source: source, cn: KNOWN[hash] || null });
                     if (--pending === 0) { log('已安装: ' + certs1.length); render1(); }
                 });
             });
