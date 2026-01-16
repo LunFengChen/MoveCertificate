@@ -46,12 +46,36 @@ if [ -n "$SCAN_DIRS" ]; then
     sed -i "s|var SCAN_PATHS = \[.*\];|var SCAN_PATHS = [$JS_ARRAY];|" webroot/index.html
 fi
 
-# 复制证书目录
+# 复制证书目录并转换格式
 rm -rf certificates 2>/dev/null || true
 if [ -n "$CERT_DIR" ] && [ -d "$CERT_DIR" ]; then
     echo "Packaging certificates from $CERT_DIR"
     mkdir -p certificates
-    cp "$CERT_DIR"/* certificates/ 2>/dev/null || true
+    
+    # 处理每个证书文件
+    for cert in "$CERT_DIR"/*; do
+        [ -f "$cert" ] || continue
+        filename=$(basename "$cert")
+        ext="${filename##*.}"
+        
+        if [ "$ext" = "0" ]; then
+            # 已经是 .0 格式，直接复制
+            cp "$cert" certificates/
+            echo "Copied: $filename"
+        elif [ "$ext" = "pem" ] || [ "$ext" = "crt" ] || [ "$ext" = "cer" ]; then
+            # 需要转换：计算 hash 并重命名
+            if command -v openssl &> /dev/null; then
+                HASH=$(openssl x509 -subject_hash_old -noout -in "$cert" 2>/dev/null) || continue
+                cp "$cert" "certificates/${HASH}.0"
+                echo "Converted: $filename -> ${HASH}.0"
+            else
+                # 没有 openssl，保持原样（模块启动时会转换）
+                cp "$cert" certificates/
+                echo "Copied (no openssl): $filename"
+            fi
+        fi
+    done
+    
     echo "Found $(ls certificates/ 2>/dev/null | wc -l) certificates"
 fi
 

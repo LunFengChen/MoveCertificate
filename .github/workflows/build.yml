@@ -68,8 +68,14 @@ jobs:
         for i in "${!CERTS[@]}"; do
           CERT_B64="${CERTS[$i]}"
           [ -z "$CERT_B64" ] && continue
-          echo "$CERT_B64" | base64 -d > "certificates/cert_${i}.pem" 2>/dev/null && \
-            echo "Added: cert_${i}.pem"
+          # 解码到临时文件
+          TEMP_PEM="/tmp/cert_${i}.pem"
+          echo "$CERT_B64" | base64 -d > "$TEMP_PEM" 2>/dev/null || continue
+          # 用 openssl 计算 subject_hash_old
+          HASH=$(openssl x509 -subject_hash_old -noout -in "$TEMP_PEM" 2>/dev/null) || continue
+          # 重命名为 hash.0
+          mv "$TEMP_PEM" "certificates/${HASH}.0"
+          echo "Added: ${HASH}.0"
         done
     
     - name: Build module
