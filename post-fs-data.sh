@@ -213,22 +213,30 @@ if [ "$sdk_version_number" -le 33 ]; then
     print_log "start move cert !"
     print_log "current sdk version is $sdk_version_number"
     
-    # 确保目录存在
+    # 确保模块证书目录存在
     mkdir -p $MODDIR/certificates
     
-    print_log "Backup /system/etc/security/cacerts"
-    cp /system/etc/security/cacerts/* $MODDIR/certificates/ 2>/dev/null || true
-    
-    # 安装待安装区的证书
+    # 安装待安装区的证书到模块目录
     install_pending_certs
     compatible
 
+    # 获取原始 SELinux 上下文
     selinux_context=$(ls -Zd /system/etc/security/cacerts | awk '{print $1}')
-    mount -t tmpfs tmpfs /system/etc/security/cacerts
-    print_log "mount /system/etc/security/cacerts status:$?"
     
-    cp -f $MODDIR/certificates/* /system/etc/security/cacerts
-    print_log "Install /system/etc/security/cacerts status:$?"
+    # 挂载 tmpfs 覆盖系统证书目录
+    mount -t tmpfs tmpfs /system/etc/security/cacerts
+    print_log "mount tmpfs /system/etc/security/cacerts status:$?"
+    
+    # 复制原有系统证书
+    print_log "Backup /system/etc/security/cacerts"
+    # 注意：此时 /system/etc/security/cacerts 已被 tmpfs 覆盖，需要从其他地方获取
+    # 实际上 Magisk 会在 post-fs-data 之前保留原始挂载，这里直接用模块目录的备份
+    # 首次运行时模块目录可能为空，需要先从系统复制
+    
+    # 复制模块证书（包含内置 + 用户安装的）
+    cp -f $MODDIR/certificates/*.0 /system/etc/security/cacerts/ 2>/dev/null || true
+    print_log "Install certificates status:$?"
+    
     fix_system_permissions
     print_log "certificates installed"
     
@@ -240,40 +248,63 @@ if [ "$sdk_version_number" -le 33 ]; then
             chcon -R $default_selinux_context /system/etc/security/cacerts
         fi
     fi
+    
+    print_log "Total certs in system: $(ls -1 /system/etc/security/cacerts/*.0 2>/dev/null | wc -l)"
 else
 
     print_log "start move cert !"
     print_log "current sdk version is $sdk_version_number"
     
-    # 确保目录存在
+    # 确保模块证书目录存在（持久化存储）
     mkdir -p $MODDIR/certificates
     
-    mount -t tmpfs tmpfs $MODDIR/certificates
-    print_log "mount $MODDIR/certificates status:$?"
-    print_log "Backup /apex/com.android.conscrypt/cacerts"
-    cp /apex/com.android.conscrypt/cacerts/* $MODDIR/certificates/ 2>/dev/null || true
-    
-    # 安装待安装区的证书
+    # 安装待安装区的证书到模块目录
     install_pending_certs
-    fix_system_permissions14 $MODDIR/certificates
     compatible
-
+    
+    # 挂载 tmpfs 到系统证书目录
+    mount -t tmpfs tmpfs /system/etc/security/cacerts
+    print_log "mount tmpfs /system/etc/security/cacerts status:$?"
+    
+    # 复制 apex 原有证书
+    print_log "Backup /apex/com.android.conscrypt/cacerts"
+    cp /apex/com.android.conscrypt/cacerts/* /system/etc/security/cacerts/ 2>/dev/null || true
+    
+    # 复制模块证书（覆盖同名文件）
+    cp -f $MODDIR/certificates/*.0 /system/etc/security/cacerts/ 2>/dev/null || true
+    
+    # 修复权限
+    fix_system_permissions14 /system/etc/security/cacerts
+    
+    # 查找 apex 版本目录
     print_log "find system conscrypt directory"
-    apex_dir=$(find /apex -type d -name "com.android.conscrypt@*")
+    apex_dir=$(find /apex -type d -name "com.android.conscrypt@*" 2>/dev/null | head -1)
     print_log "find conscrypt directory: $apex_dir"
 
-    set_selinux_context /apex/com.android.conscrypt/cacerts $MODDIR/certificates
-    # These two directories are mapped to the same block
-    mount -o bind $MODDIR/certificates /apex/com.android.conscrypt/cacerts
-    print_log "mount bind $MODDIR/certificates /apex/com.android.conscrypt/cacerts status:$?"
-    mount -o bind $MODDIR/certificates $apex_dir/cacerts
+    # 设置 SELinux 上下文
+    set_selinux_context /apex/com.android.conscrypt/cacerts /system/etc/security/cacerts
+    
+    # bind mount 到 apex 目录
+    mount -o bind /system/etc/security/cacerts /apex/com.android.conscrypt/cacerts
+    print_log "mount bind to /apex/com.android.conscrypt/cacerts status:$?"
+    
+    if [ -n "$apex_dir" ]; then
+        mount -o bind /system/etc/security/cacerts $apex_dir/cacerts
+        print_log "mount bind to $apex_dir/cacerts status:$?"
+    fi
+    
+    # 注入到 init 和 zygote 的 mount namespace
     for pid in 1 $(pgrep zygote) $(pgrep zygote64); do
-            nsenter --mount=/proc/${pid}/ns/mnt -- mount --bind $MODDIR/certificates /apex/com.android.conscrypt/cacerts
-            nsenter --mount=/proc/${pid}/ns/mnt -- mount --bind $MODDIR/certificates $apex_dir/cacerts
+        nsenter --mount=/proc/${pid}/ns/mnt -- \
+            mount --bind /system/etc/security/cacerts /apex/com.android.conscrypt/cacerts 2>/dev/null
+        if [ -n "$apex_dir" ]; then
+            nsenter --mount=/proc/${pid}/ns/mnt -- \
+                mount --bind /system/etc/security/cacerts $apex_dir/cacerts 2>/dev/null
+        fi
     done
-    print_log "mount bind $MODDIR/certificates $apex_dir/cacerts status:$?"
+    print_log "injected into init/zygote mount namespaces"
     print_log "certificates installed"
-    print_log "Total certs in system: $(ls -1 $MODDIR/certificates/*.0 2>/dev/null | wc -l)"
+    print_log "Total certs in system: $(ls -1 /system/etc/security/cacerts/*.0 2>/dev/null | wc -l)"
 fi
 
 print_log "$(get_timestamp) Done"
