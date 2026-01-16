@@ -9,8 +9,10 @@ on:
   workflow_dispatch:
 
 # 使用方法：
-# 把证书文件放到 certificates/ 目录，push 触发构建
-# 支持格式: .pem .crt .cer .0
+# 1. 仓库 Settings → Secrets and variables → Actions → New repository secret
+# 2. 添加 CERT_1, CERT_2, ... CERT_5 (可选)
+# 3. 值为证书的 base64: cat cert.pem | base64 -w0
+# 4. 手动触发 workflow 或 push 触发构建
 
 jobs:
   build:
@@ -40,36 +42,47 @@ jobs:
     
     - name: Process certificates
       id: certs
+      env:
+        CERT_1: ${{ secrets.CERT_1 }}
+        CERT_2: ${{ secrets.CERT_2 }}
+        CERT_3: ${{ secrets.CERT_3 }}
+        CERT_4: ${{ secrets.CERT_4 }}
+        CERT_5: ${{ secrets.CERT_5 }}
       shell: bash
       run: |
+        mkdir -p certificates
         CERT_HASHES=""
         
-        # 只处理仓库中已有的 certificates/ 目录
-        if [ -d "certificates" ] && [ "$(ls -A certificates 2>/dev/null)" ]; then
-          echo "Found certificates in repo"
-          for cert in certificates/*; do
+        # 处理 Secrets 中的证书
+        for i in 1 2 3 4 5; do
+          eval "cert_b64=\$CERT_$i"
+          [ -z "$cert_b64" ] && continue
+          
+          TEMP="/tmp/cert_${i}.pem"
+          echo "$cert_b64" | base64 -d > "$TEMP" 2>/dev/null || continue
+          
+          # 验证证书
+          if ! openssl x509 -noout -in "$TEMP" 2>/dev/null; then
+            echo "CERT_$i: invalid certificate"
+            rm -f "$TEMP"
+            continue
+          fi
+          
+          HASH=$(openssl x509 -subject_hash_old -noout -in "$TEMP")
+          mv "$TEMP" "certificates/${HASH}.0"
+          echo "Added from secret: ${HASH}.0"
+          
+          [ -n "$CERT_HASHES" ] && CERT_HASHES="${CERT_HASHES}-${HASH}" || CERT_HASHES="${HASH}"
+        done
+        
+        # 处理仓库中已有的证书
+        if [ -d "certificates" ]; then
+          for cert in certificates/*.pem certificates/*.crt certificates/*.cer 2>/dev/null; do
             [ -f "$cert" ] || continue
-            filename=$(basename "$cert")
-            ext="${filename##*.}"
-            
-            if [ "$ext" = "0" ]; then
-              # 已经是 .0 格式
-              HASH="${filename%.0}"
-            elif [ "$ext" = "pem" ] || [ "$ext" = "crt" ] || [ "$ext" = "cer" ]; then
-              # 需要转换
-              HASH=$(openssl x509 -subject_hash_old -noout -in "$cert" 2>/dev/null) || continue
-              openssl x509 -in "$cert" -out "certificates/${HASH}.0" 2>/dev/null || continue
-              rm -f "$cert"
-              echo "Converted: $filename -> ${HASH}.0"
-            else
-              continue
-            fi
-            
-            if [ -n "$CERT_HASHES" ]; then
-              CERT_HASHES="${CERT_HASHES}-${HASH}"
-            else
-              CERT_HASHES="${HASH}"
-            fi
+            HASH=$(openssl x509 -subject_hash_old -noout -in "$cert" 2>/dev/null) || continue
+            openssl x509 -in "$cert" -out "certificates/${HASH}.0"
+            rm -f "$cert"
+            echo "Converted: $(basename $cert) -> ${HASH}.0"
           done
         fi
         
