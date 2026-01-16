@@ -38,7 +38,8 @@ adb push cert.pem /sdcard/Download/
 # 模块 → ⚙️ → 候选区域点 ➕ → 重启
 ```
 
-<img src="screenshots/webui.png" width="300" alt="WebUI">
+<img src="screenshots/1.png" width="300" alt="WebUI 证书列表">
+<img src="screenshots/2.png" width="300" alt="WebUI 证书详情">
 
 ## 本地构建
 
