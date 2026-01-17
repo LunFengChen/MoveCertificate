@@ -5,14 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MoveCertificate</title>
     <style>
-        /* Material Icons 字体内嵌 - 离线可用 */
-        @font-face {
-            font-family: 'Material Icons';
-            font-style: normal;
-            font-weight: 400;
-            src: url(MaterialIcons-Regular.woff2) format('woff2');
-            font-display: block;
-        }
+        /* Material Icons 字体 - 使用 Google Fonts CDN */
+        @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
         .material-icons {
             font-family: 'Material Icons';
             font-weight: normal;
@@ -69,13 +63,7 @@
     </style>
 </head>
 <body>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <h1 style="margin:0">MoveCertificate</h1>
-        <button class="icon-btn" onclick="rebootDevice()" title="重启设备" style="display:flex;align-items:center;gap:4px">
-            <span style="font-size:12px;color:#ff9800">重启</span>
-            <span class="material-icons" style="color:#ff9800">restart_alt</span>
-        </button>
-    </div>
+    <h1>MoveCertificate</h1>
     <div class="sub" id="ver">v1.0.0 · by x1a0f3n9</div>
 
     <div class="card">
@@ -161,30 +149,6 @@
     function log(m){var el=document.getElementById('debug');el.textContent+=m+'\n';el.scrollTop=el.scrollHeight;}
     function toast(m){var t=document.getElementById('toast');t.textContent=m;t.className='toast show';setTimeout(function(){t.className='toast';},2000);}
     function exec(cmd){return new Promise(function(ok,fail){var cb='_c'+(++cbId)+'_'+Date.now();window[cb]=function(errno,stdout,stderr){delete window[cb];errno===0?ok(stdout||''):fail(new Error(stderr||'err='+errno));};try{ksu.exec(cmd,'{}',cb);}catch(e){delete window[cb];fail(e);}});}
-
-    window.rebootDevice = function() {
-        if (confirm('确定要重启设备吗？')) {
-            toast('正在重启...');
-            log('执行重启命令...');
-            // 使用 su -c 确保有 root 权限
-            exec('su -c reboot').catch(function(e1) { 
-                log('su -c reboot 失败: ' + e1.message + ', 尝试 reboot');
-                return exec('reboot');
-            }).catch(function(e2) {
-                log('reboot 失败: ' + e2.message + ', 尝试 /system/bin/reboot');
-                return exec('/system/bin/reboot');
-            }).catch(function(e3) {
-                log('/system/bin/reboot 失败: ' + e3.message + ', 尝试 svc power reboot');
-                return exec('svc power reboot');
-            }).catch(function(e4) {
-                log('svc power reboot 失败: ' + e4.message + ', 尝试 setprop sys.powerctl reboot');
-                return exec('setprop sys.powerctl reboot');
-            }).catch(function(e5) {
-                log('所有重启方式都失败了: ' + e5.message);
-                toast('重启失败，请手动重启');
-            });
-        }
-    };
 
     // MD5 实现 (blueimp-md5, 正确版本)
     function safeAdd(x, y) {
