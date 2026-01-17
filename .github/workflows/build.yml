@@ -104,16 +104,26 @@ jobs:
       id: version
       run: |
         CERT_HASHES="${{ steps.certs.outputs.cert_hashes }}"
+        HAS_CERTS=""
+        COMMIT_HASH=$(git rev-parse --short HEAD)
+        
+        # 检查是否有证书
+        if [ -d "certificates" ] && [ "$(ls -A certificates 2>/dev/null)" ]; then
+          HAS_CERTS="withCert"
+        fi
         
         if [[ $GITHUB_REF == refs/tags/* ]]; then
           # tag 触发：使用 tag 名
           VERSION=${GITHUB_REF#refs/tags/}
-        elif [[ -n "$CERT_HASHES" ]]; then
-          # 手动触发且有证书：使用 hash 拼接
-          VERSION="v1.0.0-${CERT_HASHES}"
+          if [[ -n "$HAS_CERTS" && -n "$CERT_HASHES" ]]; then
+            VERSION="${VERSION}-${HAS_CERTS}-${CERT_HASHES}"
+          fi
         else
-          # 其他情况：使用 commit hash
-          VERSION="v1.0.0-$(git rev-parse --short HEAD)"
+          # push 或手动触发：都使用 commit hash
+          VERSION="v1.0.1-${COMMIT_HASH}"
+          if [[ -n "$HAS_CERTS" && -n "$CERT_HASHES" ]]; then
+            VERSION="${VERSION}-${HAS_CERTS}-${CERT_HASHES}"
+          fi
         fi
         
         echo "version=$VERSION" >> $GITHUB_OUTPUT
