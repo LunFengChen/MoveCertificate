@@ -53,8 +53,6 @@ convert_and_copy_cert() {
     local ext="${filename##*.}"
     local hash=""
     
-    local cert_hash_bin=$(get_cert_hash_bin)
-    
     # 如果已经是 .0 格式
     if [ "$ext" = "0" ]; then
         hash="${filename%.0}"
@@ -73,19 +71,31 @@ convert_and_copy_cert() {
         ;;
     esac
     
-    # 使用 cert-hash 计算 hash
+    # 优先使用 openssl 计算 hash（最准确）
+    if command -v openssl >/dev/null 2>&1; then
+        hash=$(openssl x509 -subject_hash_old -noout -in "$src" 2>/dev/null)
+        if [ -n "$hash" ] && [ ${#hash} -eq 8 ]; then
+            cp -f "$src" "$dest_dir/${hash}.0"
+            print_log "Convert: $filename -> ${hash}.0 (openssl)"
+            echo "$hash"
+            return 0
+        fi
+    fi
+    
+    # 备用方案：使用 cert-hash 工具
+    local cert_hash_bin=$(get_cert_hash_bin)
     if [ -x "$cert_hash_bin" ]; then
         hash=$("$cert_hash_bin" "$src" 2>/dev/null)
         if [ -n "$hash" ] && [ ${#hash} -eq 8 ]; then
             cp -f "$src" "$dest_dir/${hash}.0"
-            print_log "Convert: $filename -> ${hash}.0"
+            print_log "Convert: $filename -> ${hash}.0 (cert-hash)"
             echo "$hash"
             return 0
         else
             print_log "Failed: $filename (cert-hash returned invalid hash)"
         fi
     else
-        print_log "Failed: $filename (cert-hash not executable)"
+        print_log "Failed: $filename (no hash tool available)"
     fi
     
     return 1
