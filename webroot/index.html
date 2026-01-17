@@ -183,35 +183,78 @@
         }
     };
 
-    // MD5 实现 (用于计算 subject_hash_old)
+    // MD5 实现 - 修复版本
     function md5(bytes) {
-        function rotl(x, n) { return (x << n) | (x >>> (32 - n)); }
-        function toWord(a, b, c, d) { return ((a & 0xff) | ((b & 0xff) << 8) | ((c & 0xff) << 16) | ((d & 0xff) << 24)) >>> 0; }
-        var K = [], S = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
-        for (var i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 0x100000000) >>> 0;
-        var len = bytes.length, padded = bytes.slice();
+        function rotl(x, n) { return ((x << n) | (x >>> (32 - n))) >>> 0; }
+        
+        var S = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,
+                 5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,
+                 4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,
+                 6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+        var K = [];
+        for (var i = 0; i < 64; i++) {
+            K[i] = (Math.floor(Math.abs(Math.sin(i + 1)) * 0x100000000)) >>> 0;
+        }
+        
+        // Padding
+        var len = bytes.length;
+        var padded = bytes.slice();
         padded.push(0x80);
-        while ((padded.length % 64) !== 56) padded.push(0);
-        var bits = len * 8;
-        for (var i = 0; i < 8; i++) padded.push((bits >>> (i * 8)) & 0xff);
+        while ((padded.length % 64) !== 56) {
+            padded.push(0);
+        }
+        var bitLen = len * 8;
+        for (var i = 0; i < 8; i++) {
+            padded.push((bitLen >>> (i * 8)) & 0xff);
+        }
+        
         var a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
-        for (var chunk = 0; chunk < padded.length; chunk += 64) {
+        
+        for (var offset = 0; offset < padded.length; offset += 64) {
             var M = [];
-            for (var j = 0; j < 16; j++) M[j] = toWord(padded[chunk + j * 4], padded[chunk + j * 4 + 1], padded[chunk + j * 4 + 2], padded[chunk + j * 4 + 3]);
+            for (var i = 0; i < 16; i++) {
+                M[i] = (padded[offset + i*4] |
+                       (padded[offset + i*4 + 1] << 8) |
+                       (padded[offset + i*4 + 2] << 16) |
+                       (padded[offset + i*4 + 3] << 24)) >>> 0;
+            }
+            
             var A = a0, B = b0, C = c0, D = d0;
+            
             for (var i = 0; i < 64; i++) {
                 var F, g;
-                if (i < 16) { F = (B & C) | ((~B >>> 0) & D); g = i; }
-                else if (i < 32) { F = (D & B) | ((~D >>> 0) & C); g = (5 * i + 1) % 16; }
-                else if (i < 48) { F = B ^ C ^ D; g = (3 * i + 5) % 16; }
-                else { F = C ^ (B | (~D >>> 0)); g = (7 * i) % 16; }
+                if (i < 16) {
+                    F = (B & C) | ((~B) & D);
+                    g = i;
+                } else if (i < 32) {
+                    F = (D & B) | ((~D) & C);
+                    g = (5 * i + 1) % 16;
+                } else if (i < 48) {
+                    F = B ^ C ^ D;
+                    g = (3 * i + 5) % 16;
+                } else {
+                    F = C ^ (B | (~D));
+                    g = (7 * i) % 16;
+                }
+                
                 F = (F + A + K[i] + M[g]) >>> 0;
-                A = D; D = C; C = B; B = (B + rotl(F, S[i])) >>> 0;
+                A = D;
+                D = C;
+                C = B;
+                B = (B + rotl(F, S[i])) >>> 0;
             }
-            a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0;
+            
+            a0 = (a0 + A) >>> 0;
+            b0 = (b0 + B) >>> 0;
+            c0 = (c0 + C) >>> 0;
+            d0 = (d0 + D) >>> 0;
         }
+        
         var result = [];
-        [a0, b0, c0, d0].forEach(function(v) { for (var i = 0; i < 4; i++) result.push((v >>> (i * 8)) & 0xff); });
+        for (var i = 0; i < 4; i++) result.push((a0 >>> (i * 8)) & 0xff);
+        for (var i = 0; i < 4; i++) result.push((b0 >>> (i * 8)) & 0xff);
+        for (var i = 0; i < 4; i++) result.push((c0 >>> (i * 8)) & 0xff);
+        for (var i = 0; i < 4; i++) result.push((d0 >>> (i * 8)) & 0xff);
         return result;
     }
 
