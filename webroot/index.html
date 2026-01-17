@@ -4,9 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MoveCertificate</title>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/@material-icons/font@latest/css/all.min.css" rel="stylesheet">
     <style>
+        /* Material Icons 字体内嵌 - 离线可用 */
+        @font-face {
+            font-family: 'Material Icons';
+            font-style: normal;
+            font-weight: 400;
+            src: url(https://cdn.jsdelivr.net/gh/google/material-design-icons@master/font/MaterialIcons-Regular.woff2) format('woff2'),
+                 url(https://fonts.gstatic.com/s/materialicons/v140/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2) format('woff2');
+            font-display: block;
+        }
+        .material-icons {
+            font-family: 'Material Icons';
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            font-feature-settings: 'liga';
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: system-ui; background: #1a1a1a; color: #e0e0e0; padding: 16px; font-size: 14px; }
         h1 { font-size: 20px; margin-bottom: 4px; }
