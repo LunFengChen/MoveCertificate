@@ -55,37 +55,43 @@ jobs:
         mkdir -p certificates
         CERT_HASHES=""
         
-        # 处理 Secrets 中的证书
-        for i in 1 2 3 4 5; do
-          eval "cert_val=\$CERT_$i"
-          [ -z "$cert_val" ] && continue
+        # 只有手动触发才使用 Secrets 中的证书
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "=== Manual trigger: processing certificates from secrets ==="
           
-          TEMP="/tmp/cert_${i}.pem"
-          
-          # 检测格式：PEM 或 Base64
-          if echo "$cert_val" | grep -q "BEGIN CERTIFICATE"; then
-            # PEM 格式直接保存
-            echo "$cert_val" > "$TEMP"
-          else
-            # Base64 格式解码
-            echo "$cert_val" | base64 -d > "$TEMP" 2>/dev/null || continue
-          fi
-          
-          # 验证证书
-          if ! openssl x509 -noout -in "$TEMP" 2>/dev/null; then
-            echo "CERT_$i: invalid certificate"
-            rm -f "$TEMP"
-            continue
-          fi
-          
-          HASH=$(openssl x509 -subject_hash_old -noout -in "$TEMP")
-          mv "$TEMP" "certificates/${HASH}.0"
-          echo "Added from secret: ${HASH}.0"
-          
-          [ -n "$CERT_HASHES" ] && CERT_HASHES="${CERT_HASHES}-${HASH}" || CERT_HASHES="${HASH}"
-        done
+          for i in 1 2 3 4 5; do
+            eval "cert_val=\$CERT_$i"
+            [ -z "$cert_val" ] && continue
+            
+            TEMP="/tmp/cert_${i}.pem"
+            
+            # 检测格式：PEM 或 Base64
+            if echo "$cert_val" | grep -q "BEGIN CERTIFICATE"; then
+              # PEM 格式直接保存
+              echo "$cert_val" > "$TEMP"
+            else
+              # Base64 格式解码
+              echo "$cert_val" | base64 -d > "$TEMP" 2>/dev/null || continue
+            fi
+            
+            # 验证证书
+            if ! openssl x509 -noout -in "$TEMP" 2>/dev/null; then
+              echo "CERT_$i: invalid certificate"
+              rm -f "$TEMP"
+              continue
+            fi
+            
+            HASH=$(openssl x509 -subject_hash_old -noout -in "$TEMP")
+            mv "$TEMP" "certificates/${HASH}.0"
+            echo "Added from secret: ${HASH}.0"
+            
+            [ -n "$CERT_HASHES" ] && CERT_HASHES="${CERT_HASHES}-${HASH}" || CERT_HASHES="${HASH}"
+          done
+        else
+          echo "=== Tag/Push trigger: skipping secrets, building generic version ==="
+        fi
         
-        # 处理仓库中已有的证书
+        # 处理仓库中已有的证书文件（如果有）
         if [ -d "certificates" ]; then
           for cert in certificates/*.pem certificates/*.crt certificates/*.cer; do
             [ -f "$cert" ] || continue
@@ -93,6 +99,7 @@ jobs:
             openssl x509 -in "$cert" -out "certificates/${HASH}.0"
             rm -f "$cert"
             echo "Converted: $(basename $cert) -> ${HASH}.0"
+            [ -n "$CERT_HASHES" ] && CERT_HASHES="${CERT_HASHES}-${HASH}" || CERT_HASHES="${HASH}"
           done
         fi
         
@@ -156,13 +163,12 @@ jobs:
         path: artifact/*
     
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ startsWith(github.ref, 'refs/tags/') && steps.version.outputs.version || 'latest' }}
-        name: ${{ startsWith(github.ref, 'refs/tags/') && steps.version.outputs.version || 'Latest Build' }}
+        tag_name: ${{ steps.version.outputs.version }}
+        name: ${{ steps.version.outputs.version }}
         files: MoveCertificate-*.zip
         generate_release_notes: true
-        prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
